@@ -1,0 +1,18 @@
+{
+  "4": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "NoobAI-XL-v1.1.safetensors"}},
+  "5": {"class_type": "EmptyLatentImage", "inputs": {"width": 832, "height": 1216, "batch_size": 1}},
+  "6": {"class_type": "CLIPTextEncode", "inputs": {"text": "", "clip": ["4", 1]}},
+  "7": {"class_type": "CLIPTextEncode", "inputs": {"text": "", "clip": ["4", 1]}},
+  "3": {"class_type": "KSampler", "inputs": {"seed": 0, "steps": 28, "cfg": 5.0, "sampler_name": "euler_ancestral", "scheduler": "normal", "denoise": 1.0, "model": ["4", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["5", 0]}},
+  "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
+  "10": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
+  "11": {"class_type": "ImageScaleBy", "inputs": {"image": ["10", 0], "upscale_method": "lanczos", "scale_by": 1.5}},
+  "12": {"class_type": "VAEEncode", "inputs": {"pixels": ["11", 0], "vae": ["4", 2]}},
+  "13": {"class_type": "KSampler", "inputs": {"seed": 0, "steps": 20, "cfg": 5.0, "sampler_name": "euler_ancestral", "scheduler": "normal", "denoise": 0.45, "model": ["4", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["12", 0]}},
+  "14": {"class_type": "VAEDecode", "inputs": {"samples": ["13", 0], "vae": ["4", 2]}},
+  "15": {"class_type": "UltralyticsDetectorProvider", "inputs": {"model_name": "bbox/face_yolov8m.pt"}},
+  "16": {"class_type": "UltralyticsDetectorProvider", "inputs": {"model_name": "bbox/hand_yolov8s.pt"}},
+  "17": {"class_type": "FaceDetailer", "inputs": {"image": ["14", 0], "model": ["4", 0], "clip": ["4", 1], "vae": ["4", 2], "guide_size": 512, "guide_size_for": true, "max_size": 1024, "seed": 1, "steps": 20, "cfg": 5.0, "sampler_name": "euler_ancestral", "scheduler": "normal", "positive": ["6", 0], "negative": ["7", 0], "denoise": 0.4, "feather": 5, "noise_mask": true, "force_inpaint": true, "bbox_threshold": 0.5, "bbox_dilation": 10, "bbox_crop_factor": 3.0, "sam_detection_hint": "center-1", "sam_dilation": 0, "sam_threshold": 0.93, "sam_bbox_expansion": 0, "sam_mask_hint_threshold": 0.7, "sam_mask_hint_use_negative": "False", "drop_size": 10, "bbox_detector": ["15", 0], "wildcard": "", "cycle": 1}},
+  "18": {"class_type": "FaceDetailer", "inputs": {"image": ["17", 0], "model": ["4", 0], "clip": ["4", 1], "vae": ["4", 2], "guide_size": 512, "guide_size_for": true, "max_size": 1024, "seed": 2, "steps": 20, "cfg": 5.0, "sampler_name": "euler_ancestral", "scheduler": "normal", "positive": ["6", 0], "negative": ["7", 0], "denoise": 0.4, "feather": 5, "noise_mask": true, "force_inpaint": true, "bbox_threshold": 0.5, "bbox_dilation": 10, "bbox_crop_factor": 3.0, "sam_detection_hint": "center-1", "sam_dilation": 0, "sam_threshold": 0.93, "sam_bbox_expansion": 0, "sam_mask_hint_threshold": 0.7, "sam_mask_hint_use_negative": "False", "drop_size": 10, "bbox_detector": ["16", 0], "wildcard": "", "cycle": 1}},
+  "9": {"class_type": "SaveImage", "inputs": {"filename_prefix": "artgen", "images": ["18", 0]}}
+}

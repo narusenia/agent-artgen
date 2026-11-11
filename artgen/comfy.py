@@ -16,6 +16,8 @@ import modal
 
 MODEL_REPO = "Laxhar/noobai-XL-1.1"
 MODEL_FILE = "NoobAI-XL-v1.1.safetensors"
+DETECTOR_REPO = "Bingsu/adetailer"
+DETECTORS = ["face_yolov8m.pt", "hand_yolov8s.pt"]  # sdxl_hires_detailer.json の顔・手の修正で使う
 COMFY_DIR = "/root/comfy/ComfyUI"
 CKPT_DIR = f"{COMFY_DIR}/models/checkpoints"
 
@@ -32,6 +34,16 @@ comfy_image = (
     .pip_install("torch==2.6.0", "torchvision==0.21.0", "torchaudio==2.6.0", index_url="https://download.pytorch.org/whl/cu124")
     # requests は requirements に無いが server が使う。transformers 5 系は当時の ComfyUI で未検証なので 4 系に留める
     .run_commands(f"pip install -r {COMFY_DIR}/requirements.txt requests 'transformers<5'")
+    # 顔・手の修正（FaceDetailer）。版は ComfyUI 0.3.71 と同じ時期に固定し、torch は上げさせない
+    .apt_install("libgl1", "libglib2.0-0")
+    .run_commands(
+        f"git clone --depth 1 --branch 8.28 https://github.com/ltdrdata/ComfyUI-Impact-Pack {COMFY_DIR}/custom_nodes/ComfyUI-Impact-Pack",
+        f"git clone https://github.com/ltdrdata/ComfyUI-Impact-Subpack {COMFY_DIR}/custom_nodes/ComfyUI-Impact-Subpack"
+        f" && git -C {COMFY_DIR}/custom_nodes/ComfyUI-Impact-Subpack checkout 50c7b71a6a224734cc9b21963c6d1926816a97f1",
+        f"pip install -r {COMFY_DIR}/custom_nodes/ComfyUI-Impact-Pack/requirements.txt -r {COMFY_DIR}/custom_nodes/ComfyUI-Impact-Subpack/requirements.txt"
+        " ultralytics==8.3.162 torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 'transformers<5'"
+        " --extra-index-url https://download.pytorch.org/whl/cu124",
+    )
 )
 dl_image = modal.Image.debian_slim(python_version="3.11").uv_pip_install("huggingface-hub[hf_xet]==0.36.0")
 
@@ -41,20 +53,23 @@ app = modal.App("artgen-comfy")
 @app.function(image=dl_image, volumes={MODELS: vol}, timeout=1200)
 def fetch_model() -> str:
     """CPU で重みを Volume に落とす。既にあれば何もしない。"""
-    if (Path(MODELS) / MODEL_FILE).exists():
-        return "cached"
     from huggingface_hub import hf_hub_download
 
-    hf_hub_download(MODEL_REPO, MODEL_FILE, local_dir=MODELS)
-    vol.commit()
-    return "downloaded"
+    want = [(MODEL_REPO, MODEL_FILE, MODELS)] + [(DETECTOR_REPO, f, f"{MODELS}/ultralytics/bbox") for f in DETECTORS]
+    missing = [w for w in want if not Path(w[2], w[1]).exists()]
+    for repo, f, d in missing:
+        hf_hub_download(repo, f, local_dir=d)
+    if missing:
+        vol.commit()
+    return f"downloaded {len(missing)}" if missing else "cached"
 
 
-@app.cls(image=comfy_image, gpu="T4", volumes={MODELS: vol}, timeout=600, scaledown_window=10, max_containers=1)
+@app.cls(image=comfy_image, gpu="T4", volumes={MODELS: vol}, timeout=900, scaledown_window=30, max_containers=1)
 class ComfyUI:
     @modal.enter()
     def start(self):
         Path(CKPT_DIR, MODEL_FILE).symlink_to(Path(MODELS, MODEL_FILE))
+        Path(COMFY_DIR, "models", "ultralytics").symlink_to(Path(MODELS, "ultralytics"))
         # PYTHONPATH の /root/comfy.py（このファイル）が ComfyUI の名前空間パッケージ comfy を隠すので外す
         env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
         subprocess.Popen(["python", "main.py", "--port", "8188"], cwd=COMFY_DIR, env=env)
@@ -72,7 +87,7 @@ class ComfyUI:
         base = "http://127.0.0.1:8188"
         req = urllib.request.Request(f"{base}/prompt", json.dumps({"prompt": workflow}).encode(), {"Content-Type": "application/json"})
         pid = json.load(urllib.request.urlopen(req))["prompt_id"]
-        deadline = time.time() + 540
+        deadline = time.time() + 840
         while time.time() < deadline:
             hist = json.load(urllib.request.urlopen(f"{base}/history/{pid}"))
             if pid in hist:
@@ -92,21 +107,26 @@ class ComfyUI:
 
 
 @app.local_entrypoint()
-def main(prompt: str = "", negative: str = "", seed: int = 0, width: int = 832, height: int = 1216, n: int = 2, work: str = "yohakuroku", tag: str = "", jobs: str = ""):
-    """jobs に JSON（[{tag, prompt, negative, seed, width, height, n}, ...]）を渡すと、一度の起動でまとめて流す。"""
+def main(prompt: str = "", negative: str = "", seed: int = 0, width: int = 832, height: int = 1216, n: int = 2, work: str = "yohakuroku", tag: str = "", jobs: str = "", workflow: str = "sdxl_txt2img", gpu: str = "T4"):
+    """jobs に JSON（[{tag, prompt, negative, seed, width, height, n, workflow}, ...]）を渡すと、一度の起動でまとめて流す。
+
+    workflow は workflows/ のファイル名（sdxl_txt2img か sdxl_hires_detailer）。gpu は T4 か L4（費用の決まりでそれより上は使わない）。
+    """
+    assert gpu in ("T4", "L4"), gpu
     here = Path(__file__).resolve()  # 手元でだけ評価する（コンテナ内は /root/comfy.py で親が無い）
-    base = dict(prompt=prompt, negative=negative, seed=seed, width=width, height=height, n=n, tag=tag)
+    base = dict(prompt=prompt, negative=negative, seed=seed, width=width, height=height, n=n, tag=tag, workflow=workflow)
     todo = [base | j for j in json.loads(Path(jobs).read_text())] if jobs else [base]
     assert all(j["prompt"] for j in todo), "prompt is required"
     print("model:", fetch_model.remote())
-    template = (here.parents[1] / "workflows" / "sdxl_txt2img.json").read_text()
-    comfy = ComfyUI()
+    comfy = ComfyUI.with_options(gpu=gpu)()
     t0 = time.time()
     for j in todo:
-        wf = json.loads(template)
+        wf = json.loads((here.parents[1] / "workflows" / f"{j['workflow']}.json").read_text())
         wf["6"]["inputs"]["text"] = j["prompt"]
         wf["7"]["inputs"]["text"] = j["negative"]
-        wf["3"]["inputs"]["seed"] = j["seed"]
+        for node in wf.values():  # 一段目・二段目・顔と手の修正のシードを揃える
+            if "seed" in node["inputs"]:
+                node["inputs"]["seed"] = j["seed"]
         wf["5"]["inputs"].update(width=j["width"], height=j["height"], batch_size=j["n"])
 
         t = time.time()
@@ -117,5 +137,5 @@ def main(prompt: str = "", negative: str = "", seed: int = 0, width: int = 832, 
         for i, b in enumerate(images):
             (dest / f"{j['seed']}_{i}.png").write_bytes(b)
         (dest / "workflow.json").write_text(json.dumps(wf, ensure_ascii=False, indent=2))
-        print(f"{len(images)} images in {time.time() - t:.0f}s -> {dest}")
+        print(f"{len(images)} images in {time.time() - t:.0f}s on {gpu} -> {dest}")
     print(f"total {time.time() - t0:.0f}s")
