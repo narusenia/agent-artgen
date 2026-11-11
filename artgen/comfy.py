@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import time
+import tomllib
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -123,9 +124,42 @@ class ComfyUI:
         ]
 
 
+PRESET_KEYS = ("width", "height", "steps", "cfg", "sampler", "workflow", "gpu", "ref_model", "ref_weight", "ref_end_at", "ref_weight_type", "ref_embeds_scaling", "ref_hires")
+
+
+def load_preset(pkg: Path, spec: str) -> list[dict]:
+    """<人物>/<name> の preset（art/prompts/<人物>.toml）を、_style.toml と合わせて jobs の形にする。seed ごとに一件。"""
+    who, name = spec.split("/")
+    d = pkg / "art" / "prompts"
+    style = tomllib.loads((d / "_style.toml").read_text())
+    p = next(p for p in tomllib.loads((d / f"{who}.toml").read_text())["preset"] if p["name"] == name)
+    parts = []
+    for u in ["style"] + [u for u in p.get("uses", []) if u != "style"]:
+        t = style
+        for k in u.split("."):
+            t = t[k]
+        parts.append(t)
+    parts.append(p)
+    job = {k: p[k] for k in PRESET_KEYS if k in p}
+    for k in ("positive", "negative"):
+        s = ", ".join(x[k] for x in parts if x.get(k))
+        for old, new in p.get("replace", []):
+            assert old in s or k == "negative", f"replace target not found: {old}"
+            s = s.replace(old, new)
+        job["prompt" if k == "positive" else k] = s
+    for k in ("ref", "ref_mask"):
+        if k in p:
+            job[k] = str(pkg / p[k])
+    job["tag"] = f"{who}_{name}"
+    return [job | {"seed": s} for s in p.get("seeds", [0])]
+
+
 @app.local_entrypoint()
-def main(prompt: str = "", negative: str = "", seed: int = 0, width: int = 832, height: int = 1216, n: int = 2, work: str = "yohakuroku", tag: str = "", jobs: str = "", workflow: str = "sdxl_txt2img", gpu: str = "T4"):
+def main(prompt: str = "", negative: str = "", seed: int = 0, width: int = 832, height: int = 1216, n: int = 2, work: str = "yohakuroku", tag: str = "", jobs: str = "", workflow: str = "sdxl_txt2img", gpu: str = "T4", preset: str = ""):
     """jobs に JSON（[{tag, prompt, negative, seed, width, height, n, workflow, ref, ref_weight}, ...]）を渡すと、一度の起動でまとめて流す。
+
+    preset は <人物>/<name>（packages/<work>/art/prompts/<人物>.toml の [[preset]]）。jobs の各項目にも "preset" を書ける（項目の値が優先）。
+    コマンド行の --seed（0 以外）・--n・--tag は preset より優先する。
 
     ref は参照画像のパス（手元）。指定すると IP-Adapter を一段目の KSampler に、ref_end_at（既定 0.6）までだけ掛ける。
     ref_hires=true で二段目にも掛ける。最後まで・二段目まで掛けると参照の地色と平板な塗りが残り、描きかけのような絵になった。
@@ -138,8 +172,22 @@ def main(prompt: str = "", negative: str = "", seed: int = 0, width: int = 832, 
     assert gpu in ("T4", "L4"), gpu
     here = Path(__file__).resolve()  # 手元でだけ評価する（コンテナ内は /root/comfy.py で親が無い）
     base = dict(prompt=prompt, negative=negative, seed=seed, width=width, height=height, n=n, tag=tag, workflow=workflow)
-    todo = [base | j for j in json.loads(Path(jobs).read_text())] if jobs else [base]
+    pkg = here.parents[3] / "packages" / work
+
+    def expand(j: dict) -> list[dict]:
+        if not j.get("preset"):
+            return [base | j]
+        pjs = load_preset(pkg, j["preset"])
+        if "seed" in j:  # seed を指定したら preset の seeds は使わない
+            pjs = pjs[:1]
+        return [base | pj | {k: v for k, v in j.items() if k != "preset"} for pj in pjs]
+
+    if jobs:
+        todo = [x for j in json.loads(Path(jobs).read_text()) for x in expand(j)]
+    else:
+        todo = expand({"preset": preset} | ({"seed": seed} if seed else {}) | ({"tag": tag} if tag else {}))
     assert all(j["prompt"] for j in todo), "prompt is required"
+    assert all(j.get("gpu", gpu) == gpu for j in todo), f"preset gpu differs from --gpu {gpu}"
     print("model:", fetch_model.remote())
     comfy = ComfyUI.with_options(gpu=gpu)()
     t0 = time.time()
@@ -151,6 +199,12 @@ def main(prompt: str = "", negative: str = "", seed: int = 0, width: int = 832, 
             if "seed" in node["inputs"]:
                 node["inputs"]["seed"] = j["seed"]
         wf["5"]["inputs"].update(width=j["width"], height=j["height"], batch_size=j["n"])
+        if "steps" in j:  # 一段目だけ。二段目と修正は workflow の値のまま
+            wf["3"]["inputs"]["steps"] = j["steps"]
+        for node in wf.values():
+            for k, jk in (("cfg", "cfg"), ("sampler_name", "sampler")):
+                if k in node["inputs"] and jk in j:
+                    node["inputs"][k] = j[jk]
         inputs = {}
         if j.get("ref"):
             ref = Path(j["ref"])
@@ -189,3 +243,10 @@ def main(prompt: str = "", negative: str = "", seed: int = 0, width: int = 832, 
         (dest / "workflow.json").write_text(json.dumps(wf, ensure_ascii=False, indent=2))
         print(f"{len(images)} images in {time.time() - t:.0f}s on {gpu} -> {dest}")
     print(f"total {time.time() - t0:.0f}s")
+
+
+if __name__ == "__main__":  # 自己チェック: uv run --project tools/artgen python tools/artgen/artgen/comfy.py
+    j = load_preset(Path(__file__).resolve().parents[3] / "packages" / "yohakuroku", "seres/uniform_stance_ipa")[0]
+    assert j["prompt"].startswith("masterpiece") and "1girl" in j["prompt"] and "loli" in j["negative"], j
+    assert j["seed"] == 7000 and j["tag"] == "seres_uniform_stance_ipa" and Path(j["ref"]).exists() and Path(j["ref_mask"]).exists(), j
+    print("ok")

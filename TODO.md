@@ -26,7 +26,7 @@
 - [x] 二段生成（1.5倍、denoise 0.45）と顔・手の修正（Impact-Pack の FaceDetailer）のワークフロー `sdxl_hires_detailer.json`。`--workflow` と `--gpu` で選ぶ（2026-11-11）
 - [ ] 参照画像の入力（IP-Adapter）を `comfy.py` に足す。まず作者の制服の設定画（`packages/yohakuroku/art/refs/uniform_author_v1.png`）を参照に、セレスに制服を着せて効きを見る
 - [ ] `comfy.py` に文章で直す指示（`edit <画像> "指示"`）を足す。P-H3-Image（L4）と Qwen-Image-Edit-2511 を同じ1枚で試し比べ、出来と費用で既定を決める（作者了承 2026-11-11）
-- [ ] `comfy.py` に `--preset <人物>/<name>` を足し、`packages/<作品>/art/prompts/` の採用プロンプト（`_style.toml` と合わせて）で生成できるようにする
+- [x] `comfy.py` に `--preset <人物>/<name>` を足し、`packages/<作品>/art/prompts/` の採用プロンプト（`_style.toml` と合わせて）で生成できるようにする（2026-11-11）
 
 ## 3. 下絵（Blender）
 
