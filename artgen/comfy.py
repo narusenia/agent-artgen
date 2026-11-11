@@ -92,20 +92,30 @@ class ComfyUI:
 
 
 @app.local_entrypoint()
-def main(prompt: str, negative: str = "", seed: int = 0, width: int = 832, height: int = 1216, n: int = 2, work: str = "yohakuroku"):
+def main(prompt: str = "", negative: str = "", seed: int = 0, width: int = 832, height: int = 1216, n: int = 2, work: str = "yohakuroku", tag: str = "", jobs: str = ""):
+    """jobs に JSON（[{tag, prompt, negative, seed, width, height, n}, ...]）を渡すと、一度の起動でまとめて流す。"""
     here = Path(__file__).resolve()  # 手元でだけ評価する（コンテナ内は /root/comfy.py で親が無い）
+    base = dict(prompt=prompt, negative=negative, seed=seed, width=width, height=height, n=n, tag=tag)
+    todo = [base | j for j in json.loads(Path(jobs).read_text())] if jobs else [base]
+    assert all(j["prompt"] for j in todo), "prompt is required"
     print("model:", fetch_model.remote())
-    wf = json.loads((here.parents[1] / "workflows" / "sdxl_txt2img.json").read_text())
-    wf["6"]["inputs"]["text"] = prompt
-    wf["7"]["inputs"]["text"] = negative
-    wf["3"]["inputs"]["seed"] = seed
-    wf["5"]["inputs"].update(width=width, height=height, batch_size=n)
+    template = (here.parents[1] / "workflows" / "sdxl_txt2img.json").read_text()
+    comfy = ComfyUI()
+    t0 = time.time()
+    for j in todo:
+        wf = json.loads(template)
+        wf["6"]["inputs"]["text"] = j["prompt"]
+        wf["7"]["inputs"]["text"] = j["negative"]
+        wf["3"]["inputs"]["seed"] = j["seed"]
+        wf["5"]["inputs"].update(width=j["width"], height=j["height"], batch_size=j["n"])
 
-    t = time.time()
-    images = ComfyUI().run.remote(wf)
-    dest = here.parents[3] / "packages" / work / "art" / "out" / datetime.now().strftime("%Y%m%d-%H%M%S")
-    dest.mkdir(parents=True, exist_ok=True)
-    for i, b in enumerate(images):
-        (dest / f"{seed}_{i}.png").write_bytes(b)
-    (dest / "workflow.json").write_text(json.dumps(wf, ensure_ascii=False, indent=2))
-    print(f"{len(images)} images in {time.time() - t:.0f}s -> {dest}")
+        t = time.time()
+        images = comfy.run.remote(wf)
+        name = datetime.now().strftime("%Y%m%d-%H%M%S") + (f"_{j['tag']}" if j["tag"] else "")
+        dest = here.parents[3] / "packages" / work / "art" / "out" / name
+        dest.mkdir(parents=True, exist_ok=True)
+        for i, b in enumerate(images):
+            (dest / f"{j['seed']}_{i}.png").write_bytes(b)
+        (dest / "workflow.json").write_text(json.dumps(wf, ensure_ascii=False, indent=2))
+        print(f"{len(images)} images in {time.time() - t:.0f}s -> {dest}")
+    print(f"total {time.time() - t0:.0f}s")
