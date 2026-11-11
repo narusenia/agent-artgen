@@ -53,6 +53,13 @@ mise run art:auth    # 初回だけ。Modal の認証（対話）
 mise run art:check   # GPU が借りられるか
 ```
 
+生成（Modal の T4。初回は重みを Volume `artgen-models` に落とす）:
+
+```bash
+uv run --project tools/artgen modal run tools/artgen/artgen/comfy.py --prompt "..." --negative "..." --seed 1 --n 4 [--width 832 --height 1216 --work yohakuroku]
+# → packages/<作品>/art/out/<日時>/ に PNG と workflow.json
+```
+
 下絵（Blender、手元の CPU で動く）:
 
 ```bash

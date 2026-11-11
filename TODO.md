@@ -10,9 +10,11 @@
 
 ## 1. ComfyUI on Modal
 
-- [ ] ComfyUI を Modal のイメージに載せ、API でワークフローを投げられるようにする（公式例は削除済み。削除前のコード: modal-labs/modal-examples@c7c0e3f の `06_gpu_and_ml/comfyui`）
-- [ ] モデルの重みを Modal の Volume に置く
-- [ ] 生成した画像を手元の `packages/<作品>/art/out/` に落とす
+- [x] ComfyUI v0.3.71 を Modal のイメージに載せ、API でワークフローを投げられるようにする（T4。2026-11-11）
+- [x] モデルの重みを Modal の Volume `artgen-models` に置く（2026-11-11）
+- [x] 生成した画像を手元の `packages/<作品>/art/out/` に落とす（2026-11-11）
+- [ ] `comfy.py` の名前を変える（ComfyUI の `comfy` パッケージを隠すので、今は起動時に PYTHONPATH を外して避けている）
+- [ ] Modal の Image Builder の版を上げる（今は古い版で debian_slim が bullseye になるため、python:3.11-slim-bookworm を使っている）
 
 ## 2. モデル選び
 
