@@ -5,7 +5,7 @@
 ## 0. 環境
 
 - [x] mise・uv でツールと依存を管理する（2026-11-11）
-- [ ] Modal の認証（`mise run art:auth`）と疎通確認（`mise run art:check`）
+- [x] Modal の認証（`mise run art:auth`）と疎通確認（`mise run art:check`。T4 を借りられた）（2026-11-11）
 - [ ] Modal の費用の上限を決める（ワークスペースの設定）
 
 ## 1. ComfyUI on Modal
