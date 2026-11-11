@@ -22,6 +22,8 @@
 - [ ] 編集の候補（P-H3-Image、Qwen-Image-Edit-2511）で、表情の差し替えと部分修正を試す
 - [ ] 採用したモデルを作品の `docs/visual.md` に書く
 
+- [ ] `comfy.py` に `--preset <人物>/<name>` を足し、`packages/<作品>/art/prompts/` の採用プロンプト（`_style.toml` と合わせて）で生成できるようにする
+
 ## 3. 下絵（Blender）
 
 - [x] bpy 5.2 LTS を uv で固定し、手元の CPU で画面なしに動かす（2026-11-11）
