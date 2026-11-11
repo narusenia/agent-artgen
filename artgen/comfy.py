@@ -18,6 +18,10 @@ MODEL_REPO = "Laxhar/noobai-XL-1.1"
 MODEL_FILE = "NoobAI-XL-v1.1.safetensors"
 DETECTOR_REPO = "Bingsu/adetailer"
 DETECTORS = ["face_yolov8m.pt", "hand_yolov8s.pt"]  # sdxl_hires_detailer.json の顔・手の修正で使う
+# IP-Adapter（参照画像を効かせる）。PLUS の SDXL 版と、対応する ViT-H の画像エンコーダ
+IPA_REPO = "h94/IP-Adapter"
+IPA_FILE = "sdxl_models/ip-adapter-plus_sdxl_vit-h.safetensors"
+CLIPV_FILE = "models/image_encoder/model.safetensors"
 COMFY_DIR = "/root/comfy/ComfyUI"
 CKPT_DIR = f"{COMFY_DIR}/models/checkpoints"
 
@@ -43,6 +47,9 @@ comfy_image = (
         f"pip install -r {COMFY_DIR}/custom_nodes/ComfyUI-Impact-Pack/requirements.txt -r {COMFY_DIR}/custom_nodes/ComfyUI-Impact-Subpack/requirements.txt"
         " ultralytics==8.3.162 torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 'transformers<5'"
         " --extra-index-url https://download.pytorch.org/whl/cu124",
+        # IPAdapter_plus は 2025-04 から保守モード。最後のコミットに固定（追加の依存なし）
+        f"git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus {COMFY_DIR}/custom_nodes/ComfyUI_IPAdapter_plus"
+        f" && git -C {COMFY_DIR}/custom_nodes/ComfyUI_IPAdapter_plus checkout a0f451a5113cf9becb0847b92884cb10cbdec0ef",
     )
 )
 dl_image = modal.Image.debian_slim(python_version="3.11").uv_pip_install("huggingface-hub[hf_xet]==0.36.0")
@@ -56,6 +63,7 @@ def fetch_model() -> str:
     from huggingface_hub import hf_hub_download
 
     want = [(MODEL_REPO, MODEL_FILE, MODELS)] + [(DETECTOR_REPO, f, f"{MODELS}/ultralytics/bbox") for f in DETECTORS]
+    want += [(IPA_REPO, IPA_FILE, f"{MODELS}/ipadapter"), (IPA_REPO, CLIPV_FILE, f"{MODELS}/clip_vision")]
     missing = [w for w in want if not Path(w[2], w[1]).exists()]
     for repo, f, d in missing:
         hf_hub_download(repo, f, local_dir=d)
@@ -70,6 +78,8 @@ class ComfyUI:
     def start(self):
         Path(CKPT_DIR, MODEL_FILE).symlink_to(Path(MODELS, MODEL_FILE))
         Path(COMFY_DIR, "models", "ultralytics").symlink_to(Path(MODELS, "ultralytics"))
+        Path(COMFY_DIR, "models", "ipadapter").symlink_to(Path(MODELS, "ipadapter"))
+        Path(COMFY_DIR, "models", "clip_vision", "ipa").symlink_to(Path(MODELS, "clip_vision"))
         # PYTHONPATH の /root/comfy.py（このファイル）が ComfyUI の名前空間パッケージ comfy を隠すので外す
         env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
         subprocess.Popen(["python", "main.py", "--port", "8188"], cwd=COMFY_DIR, env=env)
@@ -82,8 +92,10 @@ class ComfyUI:
         raise RuntimeError("ComfyUI did not start")
 
     @modal.method()
-    def run(self, workflow: dict) -> list[bytes]:
-        """ワークフローを実行し、SaveImage の出力を PNG のバイト列で返す。"""
+    def run(self, workflow: dict, inputs: dict[str, bytes] | None = None) -> list[bytes]:
+        """ワークフローを実行し、SaveImage の出力を PNG のバイト列で返す。inputs は LoadImage が読む画像（名前→中身）。"""
+        for name, data in (inputs or {}).items():
+            Path(COMFY_DIR, "input", name).write_bytes(data)
         base = "http://127.0.0.1:8188"
         req = urllib.request.Request(f"{base}/prompt", json.dumps({"prompt": workflow}).encode(), {"Content-Type": "application/json"})
         pid = json.load(urllib.request.urlopen(req))["prompt_id"]
@@ -108,7 +120,9 @@ class ComfyUI:
 
 @app.local_entrypoint()
 def main(prompt: str = "", negative: str = "", seed: int = 0, width: int = 832, height: int = 1216, n: int = 2, work: str = "yohakuroku", tag: str = "", jobs: str = "", workflow: str = "sdxl_txt2img", gpu: str = "T4"):
-    """jobs に JSON（[{tag, prompt, negative, seed, width, height, n, workflow}, ...]）を渡すと、一度の起動でまとめて流す。
+    """jobs に JSON（[{tag, prompt, negative, seed, width, height, n, workflow, ref, ref_weight}, ...]）を渡すと、一度の起動でまとめて流す。
+
+    ref は参照画像のパス（手元）。指定すると IP-Adapter を一段目・二段目の KSampler に掛ける（顔・手の修正には掛けない）。
 
     workflow は workflows/ のファイル名（sdxl_txt2img か sdxl_hires_detailer）。gpu は T4 か L4（費用の決まりでそれより上は使わない）。
     """
@@ -128,9 +142,23 @@ def main(prompt: str = "", negative: str = "", seed: int = 0, width: int = 832, 
             if "seed" in node["inputs"]:
                 node["inputs"]["seed"] = j["seed"]
         wf["5"]["inputs"].update(width=j["width"], height=j["height"], batch_size=j["n"])
+        inputs = {}
+        if j.get("ref"):
+            ref = Path(j["ref"])
+            inputs[ref.name] = ref.read_bytes()
+            wf["20"] = {"class_type": "LoadImage", "inputs": {"image": ref.name}}
+            wf["21"] = {"class_type": "IPAdapterModelLoader", "inputs": {"ipadapter_file": IPA_FILE}}
+            wf["22"] = {"class_type": "CLIPVisionLoader", "inputs": {"clip_name": f"ipa/{CLIPV_FILE}"}}
+            wf["23"] = {"class_type": "IPAdapterAdvanced", "inputs": {
+                "model": ["4", 0], "ipadapter": ["21", 0], "image": ["20", 0], "clip_vision": ["22", 0],
+                "weight": j.get("ref_weight", 0.6), "weight_type": "linear", "combine_embeds": "concat",
+                "start_at": 0.0, "end_at": 1.0, "embeds_scaling": "V only"}}
+            for node in wf.values():
+                if node["class_type"] == "KSampler":
+                    node["inputs"]["model"] = ["23", 0]
 
         t = time.time()
-        images = comfy.run.remote(wf)
+        images = comfy.run.remote(wf, inputs)
         name = datetime.now().strftime("%Y%m%d-%H%M%S") + (f"_{j['tag']}" if j["tag"] else "")
         dest = here.parents[3] / "packages" / work / "art" / "out" / name
         dest.mkdir(parents=True, exist_ok=True)
