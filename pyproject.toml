@@ -2,8 +2,9 @@
 name = "artgen"
 version = "0.1.0"
 description = "小説の設定画・場面参照を作る画像パイプライン（Modal 上で ComfyUI と Blender を動かす）"
-requires-python = ">=3.12"
+requires-python = "==3.13.*"
 dependencies = [
+  "bpy>=5.2.4,<5.3",
   "modal>=1.0",
 ]
 
