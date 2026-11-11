@@ -56,7 +56,12 @@ COLORS = [(255, 0, 0), (255, 85, 0), (255, 170, 0), (255, 255, 0), (170, 255, 0)
           (0, 0, 255), (85, 0, 255), (170, 0, 255), (255, 0, 255), (255, 0, 170), (255, 0, 85)]
 
 # 寄り引き → 画面の縦に収める範囲（身長に対する割合）
-SHOTS = {"full": (-0.05, 1.05), "knee": (0.25, 1.04), "waist": (0.5, 1.04), "bust": (0.68, 1.03), "face": (0.8, 1.02)}
+SHOTS = {"full": (0,), "knee": (0.25,), "waist": (0.5,), "bust": (0.68,), "face": (0.8,)}
+# カメラの既定。dynamic が既定、静かな場面は "mood": "calm"。撮影指示の camera の値が優先
+MOODS = {
+    "dynamic": {"shot": "full", "lens": 28, "pitch": 20, "yaw": 25, "roll": 8, "fill": 0.88, "place": [0.5, 0.5], "fit_props": True},
+    "calm": {"shot": "full", "lens": 50, "pitch": 0, "yaw": 0, "roll": 0, "fill": 0.88, "place": [0.5, 0.5], "fit_props": True},
+}
 
 
 def solve(rotations, height, facing, position):
@@ -77,6 +82,7 @@ def keypoints(world, h):
     hp, hm = world["head"]
     pts.update({n: hp + hm @ (Vector(v) * h) for n, v in FACE.items()})
     pts["head_center"] = hp + hm @ (Vector(HEAD_CENTER) * h)
+    pts["head_top"] = hp + hm @ (Vector((0, 0, 0.95)) * h)
     return pts
 
 
@@ -114,28 +120,47 @@ def build_doll(bm, world, h, hold):
     return []
 
 
-def place_camera(scene, cam, spec, size, target, height):
-    """カメラの高さと仰角を守ったまま、寄り引きの範囲が縦に収まる距離を探し、レンズのシフトで上下を合わせる。"""
-    w, hgt = size
-    lens = spec.get("lens", 50)
-    cam.data.lens, cam.data.sensor_width, cam.data.sensor_fit = lens, 36, "AUTO"
-    tan_v = 18 / lens * hgt / max(w, hgt)  # 縦の半画角の tan
-    pitch, zc = math.radians(spec.get("pitch", 0)), spec["height"]
-    z0, z1 = (f * height for f in SHOTS[spec.get("shot", "full")])
+def place_camera(cam, spec, size, pts):
+    """向き（方位・仰角・傾き）とレンズを守ったまま、pts が余白込みで枠に収まる距離を探し、
+    レンズのシフトで pts の外接の中心を画面の place に置く。"""
+    w, h = size
+    tan_l = 18 / spec["lens"]  # 長辺の半画角の tan（36mm 判）
+    half = (tan_l * w / max(w, h), tan_l * h / max(w, h))
+    rot = (Euler((math.pi / 2 + math.radians(spec["pitch"]), 0, math.radians(spec["yaw"]))).to_matrix()
+           @ Matrix.Rotation(math.radians(spec["roll"]), 3, "Z"))
+    fwd, inv = rot @ Vector((0, 0, -1)), rot.transposed()
+    aim = Vector([(min(c) + max(c)) / 2 for c in zip(*pts)])
 
-    def y(z, d):  # 前方の距離 d、高さ z の点の画面上の縦位置（tan 単位）
-        u = z - zc
-        return (u * math.cos(pitch) - d * math.sin(pitch)) / (d * math.cos(pitch) + u * math.sin(pitch))
+    def project(d):
+        c = aim - fwd * d
+        qs = [inv @ (p - c) for p in pts]
+        return c, None if any(q.z > -0.05 for q in qs) else [(q.x / -q.z, q.y / -q.z) for q in qs]
 
-    lo, hi = 0.3, 200.0
-    for _ in range(60):  # 距離が遠いほど範囲は小さく写る
+    lo, hi = 0.05, 200.0
+    for _ in range(60):  # 遠いほど小さく写る
         d = (lo + hi) / 2
-        lo, hi = (d, hi) if y(z1, d) - y(z0, d) > 2 * tan_v else (lo, d)
-    yaw = math.radians(spec.get("yaw", 0))
-    cam.location = Vector((*target, 0)) + Euler((0, 0, yaw)).to_matrix() @ Vector((0, -d, 0)) + Vector((0, 0, zc))
-    cam.rotation_euler = (math.pi / 2 + pitch, 0, yaw)
-    cam.data.shift_y = (y(z0, d) + y(z1, d)) / 2 * lens / 36
-    scene.camera = cam
+        uv = project(d)[1]
+        fits = uv and all(max(a) - min(a) <= 2 * half[i] * spec["fill"] for i, a in enumerate(zip(*uv)))
+        lo, hi = (lo, d) if fits else (d, hi)
+    c, uv = project(hi)
+    shift = []
+    for i, (a, place) in enumerate(zip(zip(*uv), spec["place"])):
+        span = (max(a) - min(a)) / (2 * half[i])  # 枠に対する幅
+        place = min(max(place, span / 2 + 0.02), 1 - span / 2 - 0.02)  # はみ出さない所まで寄せる
+        sign = 1 if i == 0 else -1  # place は左上が 0、カメラの y は上向き
+        shift.append(((min(a) + max(a)) / 2 - sign * (place - 0.5) * 2 * half[i]) / (2 * tan_l))
+    cam.location, cam.rotation_euler = c, rot.to_euler()
+    cam.data.lens, cam.data.sensor_width, cam.data.sensor_fit = spec["lens"], 36, "AUTO"
+    cam.data.shift_x, cam.data.shift_y = shift
+
+
+def fit_points(pts, props, height, spec):
+    """寄り引きの範囲に入る体の点（＋持ち物）。範囲の下端は体の軸上の点で示す。"""
+    z0 = SHOTS[spec["shot"]][0] * height
+    out = [p for p in pts.values() if p.z >= z0]
+    if z0 > 0:
+        out.append(Vector((pts["spine"].x, pts["spine"].y, z0)))
+    return out + (props if spec["fit_props"] else [])
 
 
 def depth_material(near, far):
@@ -188,13 +213,12 @@ def render(shot, out_dir):
     w, h = shot["size"]
     figs = []
     bm = bmesh.new()
-    extra = []
     for fig in shot["figures"]:
         pose = json.loads((POSES / f"{fig['pose']}.json").read_text())
         rot = {**pose["joints"], **fig.get("adjust", {})}
         world, hu = solve(rot, fig.get("height", 1.55), fig.get("facing", 0), fig.get("position", (0, 0)))
-        extra += build_doll(bm, world, hu, fig.get("hold"))
-        figs.append((fig, keypoints(world, hu)))
+        props = build_doll(bm, world, hu, fig.get("hold"))
+        figs.append((fig, keypoints(world, hu), props))
     bmesh.ops.create_grid(bm, x_segments=1, y_segments=1, size=30)  # 床
     mesh = bpy.data.meshes.new("doll")
     bm.to_mesh(mesh)
@@ -204,17 +228,16 @@ def render(shot, out_dir):
 
     cam = bpy.data.objects.new("cam", bpy.data.cameras.new("cam"))
     scene.collection.objects.link(cam)
-    main = shot["figures"][0]
-    place_camera(scene, cam, shot["camera"], (w, h), main.get("position", (0, 0)), main.get("height", 1.55))
+    spec = {**MOODS[shot["camera"].get("mood", "dynamic")], **shot["camera"]}
+    main, main_pts, main_props = figs[0]
+    place_camera(cam, spec, (w, h), fit_points(main_pts, main_props, main.get("height", 1.55), spec))
+    scene.camera = cam
     scene.render.resolution_x, scene.render.resolution_y, scene.render.resolution_percentage = w, h, 100
     bpy.context.view_layer.update()  # matrix_world を置いた位置に合わせる
-    # 横は主役の人形の左右の端が真ん中に来るようにずらす（小道具は数えない）
-    xs = [world_to_camera_view(scene, cam, p).x for p in figs[0][1].values()]
-    cam.data.shift_x = ((min(xs) + max(xs)) / 2 - 0.5) * w / max(w, h)
 
     inv = cam.matrix_world.inverted()
-    zs = [-(inv @ p).z for _, pts in figs for p in pts.values()] + [-(inv @ p).z for p in extra]
-    obj.data.materials.append(depth_material(min(zs) - 0.3, max(zs) + 2.0))
+    zs = [-(inv @ p).z for _, pts, props in figs for p in [*pts.values(), *props]]
+    obj.data.materials.append(depth_material(max(min(zs) - 0.3, 0.05), max(zs) + 2.0))
     scene.render.engine = "CYCLES"
     scene.cycles.device, scene.cycles.samples, scene.cycles.use_denoising = "CPU", 8, False
     scene.cycles.max_bounces = 0
@@ -227,7 +250,7 @@ def render(shot, out_dir):
     bpy.ops.render.render(write_still=True)
 
     people = []
-    for fig, pts in figs:
+    for fig, pts, _ in figs:
         cam_pos = cam.matrix_world.translation
         row = []
         for name in COCO18:
@@ -238,7 +261,7 @@ def render(shot, out_dir):
                     row.append(None)
                     continue
             x, y, _ = world_to_camera_view(scene, cam, p)
-            if not (0 <= x <= 1 and 0 <= y <= 1):
+            if fig is main and p.z >= SHOTS[spec["shot"]][0] * main.get("height", 1.55) and not (0 <= x <= 1 and 0 <= y <= 1):
                 print(f"warning: {fig.get('name', '?')} の {name} が画面の外")
             row.append((x * w, (1 - y) * h))
         people.append(row)
