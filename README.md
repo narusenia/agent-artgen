@@ -98,6 +98,15 @@ uv run --project tools/artgen python tools/artgen/artgen/underlay.py packages/<�
 # → packages/<作品>/art/out/underlay/<id>_depth.png・<id>_openpose.png
 ```
 
+設定画の文字入れ（手元、GPU なし。初回は `sh tools/artgen/fonts/fetch.sh`）:
+
+```bash
+uv run --project tools/artgen python tools/artgen/artgen/sheet.py packages/<作品>/art/sheets/<名前>.toml
+# → packages/<作品>/art/out/sheets/<名前>.png
+```
+
+型紙の形は `sheets.schema.md`。フォントは Noto Sans JP / Noto Serif JP（SIL OFL 1.1、git に入れない）。
+
 撮影指示の形は `shots.schema.md`、ポーズは `poses/`。`tools/artgen` だけ Python 3.13（bpy 5.2 LTS が 3.13 用しかないため）。
 
 作業の予定は `TODO.md`。
