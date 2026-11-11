@@ -92,7 +92,7 @@ class ComfyUI:
         raise RuntimeError("ComfyUI did not start")
 
     @modal.method()
-    def run(self, workflow: dict, inputs: dict[str, bytes] | None = None) -> list[bytes]:
+    def run(self, workflow: dict, inputs: dict[str, bytes] | None = None) -> list[tuple[str, bytes]]:
         """ワークフローを実行し、SaveImage の出力を PNG のバイト列で返す。inputs は LoadImage が読む画像（名前→中身）。"""
         for name, data in (inputs or {}).items():
             Path(COMFY_DIR, "input", name).write_bytes(data)
@@ -112,7 +112,7 @@ class ComfyUI:
             raise RuntimeError(json.dumps(entry["status"], ensure_ascii=False)[:2000])
         out = Path(COMFY_DIR, "output")
         return [
-            (out / img.get("subfolder", "") / img["filename"]).read_bytes()
+            (img["filename"], (out / img.get("subfolder", "") / img["filename"]).read_bytes())
             for node in entry["outputs"].values()
             for img in node.get("images", [])
         ]
@@ -122,7 +122,9 @@ class ComfyUI:
 def main(prompt: str = "", negative: str = "", seed: int = 0, width: int = 832, height: int = 1216, n: int = 2, work: str = "yohakuroku", tag: str = "", jobs: str = "", workflow: str = "sdxl_txt2img", gpu: str = "T4"):
     """jobs に JSON（[{tag, prompt, negative, seed, width, height, n, workflow, ref, ref_weight}, ...]）を渡すと、一度の起動でまとめて流す。
 
-    ref は参照画像のパス（手元）。指定すると IP-Adapter を一段目・二段目の KSampler に掛ける（顔・手の修正には掛けない）。
+    ref は参照画像のパス（手元）。指定すると IP-Adapter を一段目の KSampler に、ref_end_at（既定 0.6）までだけ掛ける。
+    ref_hires=true で二段目にも掛ける。最後まで・二段目まで掛けると参照の地色と平板な塗りが残り、描きかけのような絵になった。
+    stages=true で一段目（stage1）と二段目（stage2）の画像も保存する（切り分け用）。
 
     workflow は workflows/ のファイル名（sdxl_txt2img か sdxl_hires_detailer）。gpu は T4 か L4（費用の決まりでそれより上は使わない）。
     """
@@ -152,18 +154,26 @@ def main(prompt: str = "", negative: str = "", seed: int = 0, width: int = 832, 
             wf["23"] = {"class_type": "IPAdapterAdvanced", "inputs": {
                 "model": ["4", 0], "ipadapter": ["21", 0], "image": ["20", 0], "clip_vision": ["22", 0],
                 "weight": j.get("ref_weight", 0.6), "weight_type": "linear", "combine_embeds": "concat",
-                "start_at": 0.0, "end_at": 1.0, "embeds_scaling": "V only"}}
-            for node in wf.values():
-                if node["class_type"] == "KSampler":
-                    node["inputs"]["model"] = ["23", 0]
+                "start_at": 0.0, "end_at": j.get("ref_end_at", 0.6), "embeds_scaling": "V only"}}
+            wf["3"]["inputs"]["model"] = ["23", 0]
+            if j.get("ref_hires") and "13" in wf:
+                wf["13"]["inputs"]["model"] = ["23", 0]
+        if j.get("stages") and "14" in wf:
+            wf["30"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": "stage1", "images": ["10", 0]}}
+            wf["31"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": "stage2", "images": ["14", 0]}}
 
         t = time.time()
         images = comfy.run.remote(wf, inputs)
         name = datetime.now().strftime("%Y%m%d-%H%M%S") + (f"_{j['tag']}" if j["tag"] else "")
         dest = here.parents[3] / "packages" / work / "art" / "out" / name
         dest.mkdir(parents=True, exist_ok=True)
-        for i, b in enumerate(images):
-            (dest / f"{j['seed']}_{i}.png").write_bytes(b)
+        finals = 0
+        for fname, b in images:
+            if fname.startswith("artgen"):
+                (dest / f"{j['seed']}_{finals}.png").write_bytes(b)
+                finals += 1
+            else:
+                (dest / f"{j['seed']}_{fname}").write_bytes(b)
         (dest / "workflow.json").write_text(json.dumps(wf, ensure_ascii=False, indent=2))
         print(f"{len(images)} images in {time.time() - t:.0f}s on {gpu} -> {dest}")
     print(f"total {time.time() - t0:.0f}s")
