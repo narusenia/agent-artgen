@@ -23,6 +23,7 @@
 - [ ] 採用したモデルを作品の `docs/visual.md` に書く
 
 - [ ] ControlNet の回で、同じ4枚を T4 と L4 で1回ずつ出し、1枚あたりの費用を比べて既定の GPU を決める（作者了承 2026-11-11）
+- [ ] `comfy.py` に文章で直す指示（`edit <画像> "指示"`）を足す。P-H3-Image（L4）と Qwen-Image-Edit-2511 を同じ1枚で試し比べ、出来と費用で既定を決める（作者了承 2026-11-11）
 - [ ] `comfy.py` に `--preset <人物>/<name>` を足し、`packages/<作品>/art/prompts/` の採用プロンプト（`_style.toml` と合わせて）で生成できるようにする
 
 ## 3. 下絵（Blender）
