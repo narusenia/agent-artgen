@@ -22,6 +22,10 @@ DETECTORS = ["face_yolov8m.pt", "hand_yolov8s.pt"]  # sdxl_hires_detailer.json �
 IPA_REPO = "h94/IP-Adapter"
 IPA_FILE = "sdxl_models/ip-adapter-plus_sdxl_vit-h.safetensors"
 CLIPV_FILE = "models/image_encoder/model.safetensors"
+# NoobAI で学習した IP-Adapter（kataragi、ViT-H で動く）。版はコミットで固定
+NOOB_IPA_REPO, NOOB_IPA_REV = "kataragi/Noob_ipadapter", "8e2c039824185add88e917e7dfd350e8188f42b3"
+NOOB_IPA_FILE = "ip_adapter_Noobtest_800000.bin"
+IPA_MODELS = {"plus": IPA_FILE, "noob": f"noob/{NOOB_IPA_FILE}"}  # jobs の ref_model で選ぶ
 COMFY_DIR = "/root/comfy/ComfyUI"
 CKPT_DIR = f"{COMFY_DIR}/models/checkpoints"
 
@@ -64,9 +68,10 @@ def fetch_model() -> str:
 
     want = [(MODEL_REPO, MODEL_FILE, MODELS)] + [(DETECTOR_REPO, f, f"{MODELS}/ultralytics/bbox") for f in DETECTORS]
     want += [(IPA_REPO, IPA_FILE, f"{MODELS}/ipadapter"), (IPA_REPO, CLIPV_FILE, f"{MODELS}/clip_vision")]
+    want = [(*w, None) for w in want] + [(NOOB_IPA_REPO, NOOB_IPA_FILE, f"{MODELS}/ipadapter/noob", NOOB_IPA_REV)]
     missing = [w for w in want if not Path(w[2], w[1]).exists()]
-    for repo, f, d in missing:
-        hf_hub_download(repo, f, local_dir=d)
+    for repo, f, d, rev in missing:
+        hf_hub_download(repo, f, local_dir=d, revision=rev)
     if missing:
         vol.commit()
     return f"downloaded {len(missing)}" if missing else "cached"
@@ -124,6 +129,8 @@ def main(prompt: str = "", negative: str = "", seed: int = 0, width: int = 832, 
 
     ref は参照画像のパス（手元）。指定すると IP-Adapter を一段目の KSampler に、ref_end_at（既定 0.6）までだけ掛ける。
     ref_hires=true で二段目にも掛ける。最後まで・二段目まで掛けると参照の地色と平板な塗りが残り、描きかけのような絵になった。
+    ref_model は plus（SDXL 用 PLUS、既定）か noob（NoobAI 用）。ref_weight_type・ref_embeds_scaling は IPAdapterAdvanced の値をそのまま渡す。
+    ref_mask は効かせる範囲の白黒画像（手元のパス、白が効く所）。
     stages=true で一段目（stage1）と二段目（stage2）の画像も保存する（切り分け用）。
 
     workflow は workflows/ のファイル名（sdxl_txt2img か sdxl_hires_detailer）。gpu は T4 か L4（費用の決まりでそれより上は使わない）。
@@ -149,12 +156,17 @@ def main(prompt: str = "", negative: str = "", seed: int = 0, width: int = 832, 
             ref = Path(j["ref"])
             inputs[ref.name] = ref.read_bytes()
             wf["20"] = {"class_type": "LoadImage", "inputs": {"image": ref.name}}
-            wf["21"] = {"class_type": "IPAdapterModelLoader", "inputs": {"ipadapter_file": IPA_FILE}}
+            wf["21"] = {"class_type": "IPAdapterModelLoader", "inputs": {"ipadapter_file": IPA_MODELS[j.get("ref_model", "plus")]}}
             wf["22"] = {"class_type": "CLIPVisionLoader", "inputs": {"clip_name": f"ipa/{CLIPV_FILE}"}}
             wf["23"] = {"class_type": "IPAdapterAdvanced", "inputs": {
                 "model": ["4", 0], "ipadapter": ["21", 0], "image": ["20", 0], "clip_vision": ["22", 0],
-                "weight": j.get("ref_weight", 0.6), "weight_type": "linear", "combine_embeds": "concat",
-                "start_at": 0.0, "end_at": j.get("ref_end_at", 0.6), "embeds_scaling": "V only"}}
+                "weight": j.get("ref_weight", 0.6), "weight_type": j.get("ref_weight_type", "linear"), "combine_embeds": "concat",
+                "start_at": 0.0, "end_at": j.get("ref_end_at", 0.6), "embeds_scaling": j.get("ref_embeds_scaling", "V only")}}
+            if j.get("ref_mask"):
+                mask = Path(j["ref_mask"])
+                inputs[mask.name] = mask.read_bytes()
+                wf["24"] = {"class_type": "LoadImageMask", "inputs": {"image": mask.name, "channel": "red"}}
+                wf["23"]["inputs"]["attn_mask"] = ["24", 0]
             wf["3"]["inputs"]["model"] = ["23", 0]
             if j.get("ref_hires") and "13" in wf:
                 wf["13"]["inputs"]["model"] = ["23", 0]
