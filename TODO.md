@@ -6,7 +6,7 @@
 
 - [x] mise・uv でツールと依存を管理する（2026-11-11）
 - [x] Modal の認証（`mise run art:auth`）と疎通確認（`mise run art:check`。T4 を借りられた）（2026-11-11）
-- [ ] Modal の費用の上限を決める（ワークスペースの設定）
+- [x] Modal の費用の上限を決める（月30ドルで止まる設定。2026-11-11）
 
 ## 1. ComfyUI on Modal
 
@@ -22,7 +22,8 @@
 - [ ] 編集の候補（P-H3-Image、Qwen-Image-Edit-2511）で、表情の差し替えと部分修正を試す
 - [ ] 採用したモデルを作品の `docs/visual.md` に書く
 
-- [ ] ControlNet の回で、同じ4枚を T4 と L4 で1回ずつ出し、1枚あたりの費用を比べて既定の GPU を決める（作者了承 2026-11-11）
+- [x] T4 と L4 を同じ4枚で測り比べ、既定は T4 のまま（T4 約 $0.022/枚、L4 約 $0.039/枚。起動込み。2026-11-11）
+- [x] 二段生成（1.5倍、denoise 0.45）と顔・手の修正（Impact-Pack の FaceDetailer）のワークフロー `sdxl_hires_detailer.json`。`--workflow` と `--gpu` で選ぶ（2026-11-11）
 - [ ] `comfy.py` に文章で直す指示（`edit <画像> "指示"`）を足す。P-H3-Image（L4）と Qwen-Image-Edit-2511 を同じ1枚で試し比べ、出来と費用で既定を決める（作者了承 2026-11-11）
 - [ ] `comfy.py` に `--preset <人物>/<name>` を足し、`packages/<作品>/art/prompts/` の採用プロンプト（`_style.toml` と合わせて）で生成できるようにする
 
