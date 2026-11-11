@@ -47,4 +47,13 @@ mise run art:auth    # 初回だけ。Modal の認証（対話）
 mise run art:check   # GPU が借りられるか
 ```
 
+下絵（Blender、手元の CPU で動く）:
+
+```bash
+uv run --project tools/artgen python tools/artgen/artgen/underlay.py packages/<作品>/art/shots/<id>.json
+# → packages/<作品>/art/out/underlay/<id>_depth.png・<id>_openpose.png
+```
+
+撮影指示の形は `shots.schema.md`、ポーズは `poses/`。`tools/artgen` だけ Python 3.13（bpy 5.2 LTS が 3.13 用しかないため）。
+
 作業の予定は `TODO.md`。
