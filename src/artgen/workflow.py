@@ -35,7 +35,8 @@ def build(job: dict, cat: dict[str, dict] | None = None) -> tuple[dict, dict[str
     left the reference's ground colour and flat shading in, like an unfinished drawing.
 
     Other job keys: image (img2img at denoise), mask (inpaint inside image; white is repainted),
-    control (underlays through ControlNet), upscale (factor) and rembg (transparent background).
+    control (underlays through ControlNet), loras ([{model, strength}], models declared with folder "loras"),
+    upscale (factor) and rembg (transparent background).
     The post workflow only loads image and applies upscale and rembg.
     ph3_edit edits image by the instruction in prompt with P-H3-Image; images adds pictures the instruction
     calls <Picture 2>, <Picture 3>, ...; megapixels sets the size of the edit (default 4).
@@ -43,7 +44,8 @@ def build(job: dict, cat: dict[str, dict] | None = None) -> tuple[dict, dict[str
     if job["workflow"] not in names():
         raise SystemExit(f"unknown workflow {job['workflow']!r}; choose from {names()}")
     wf = json.loads(files("artgen").joinpath("workflows", f"{job['workflow']}.json").read_text())
-    scale = (cat or models.catalog())["upscaler"].get("scale", 4)
+    cat = cat or models.catalog()
+    scale = cat["upscaler"].get("scale", 4)
     inputs: dict[str, bytes] = {}
     if job["workflow"] == "ph3_edit":
         if not job.get("image"):
@@ -64,7 +66,12 @@ def build(job: dict, cat: dict[str, dict] | None = None) -> tuple[dict, dict[str
         _post(wf, job, scale)
         return wf, inputs
 
-    wf[POS]["inputs"]["text"] = job["prompt"]
+    loras = job.get("loras", [])
+    for lo in loras:
+        if lo["model"] not in cat:
+            raise SystemExit(f"unknown lora {lo['model']!r}; declare it with [[model]]")
+    triggers = [cat[lo["model"]]["trigger"] for lo in loras if cat[lo["model"]].get("trigger")]
+    wf[POS]["inputs"]["text"] = ", ".join([job["prompt"], *triggers])
     wf[NEG]["inputs"]["text"] = job["negative"]
     wf[LATENT]["inputs"].update(width=job["width"], height=job["height"], batch_size=job["n"])
     if "steps" in job:  # first pass only; the second pass and the detailer keep the workflow's value
@@ -119,6 +126,18 @@ def build(job: dict, cat: dict[str, dict] | None = None) -> tuple[dict, dict[str
     for node in wf.values():
         if node["class_type"] in ("KSampler", "FaceDetailer"):
             node["inputs"].update(positive=pos, negative=neg)
+
+    if loras:  # chain the LoRAs after the checkpoint and move everything that read the checkpoint onto the last one
+        for node in wf.values():
+            for k, v in node["inputs"].items():
+                if v in ([CKPT, 0], [CKPT, 1]):
+                    node["inputs"][k] = [str(90 + len(loras) - 1), v[1]]
+        prev = CKPT
+        for i, lo in enumerate(loras):
+            s = lo.get("strength", 0.8)
+            wf[str(90 + i)] = {"class_type": "LoraLoader", "inputs": {"model": [prev, 0], "clip": [prev, 1],
+                               "lora_name": f"${lo['model']}", "strength_model": s, "strength_clip": lo.get("strength_clip", s)}}
+            prev = str(90 + i)
 
     if job.get("stages") and STAGE2_DECODE in wf:  # keep both passes to see where a picture went wrong
         wf["30"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": "stage1", "images": [STAGE1_DECODE, 0]}}

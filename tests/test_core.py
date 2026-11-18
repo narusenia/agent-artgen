@@ -61,6 +61,15 @@ class CoreTest(unittest.TestCase):
         self.assertTrue(all(n["inputs"]["seed"] == 3 for n in wf.values() if "seed" in n["inputs"]))
         self.assertEqual(list(inputs), ["a.png"])
 
+    def test_style_goes_in_front_and_adds_loras(self):
+        d = self.p.prompts / "styles"
+        d.mkdir()
+        (d / "cel.toml").write_text('positive = "anime coloring"\nnegative = "3d"\nloras = [{ model = "cel", strength = 0.6 }]\n')
+        job = gen.plan(self.p, self.p.gen | {"style": "cel"}, {"preset": "mia/stance"})[0]
+        self.assertTrue(job["prompt"].startswith("anime coloring, masterpiece"))
+        self.assertEqual(job["negative"], "3d, lowres, bad hands")
+        self.assertEqual(job["loras"], [{"model": "cel", "strength": 0.6}])
+
     def test_prompt_required(self):
         with self.assertRaises(SystemExit):
             gen.plan(self.p, self.p.gen, {})

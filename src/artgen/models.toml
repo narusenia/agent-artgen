@@ -6,6 +6,7 @@
 # file    path inside the repo; it is also the name ComfyUI sees, unless `name` is given
 # repo    Hugging Face repo, with an optional `rev` (commit) to pin it
 # url     or a direct https download, with a required `sha256`
+# trigger words a LoRA needs; added to the prompt of a job that uses it (job key loras)
 # The Modal volume keeps each file at /models/<folder>/<file>.
 
 [[model]]

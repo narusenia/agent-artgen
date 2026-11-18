@@ -53,6 +53,17 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(sorted(m["key"] for m in models.resolve(wf, models.catalog())), ["ph3_model", "ph3_text_encoder", "ph3_vae"])
         self.assertEqual(sorted(inputs), ["pose.png", "src.png"])
 
+    def test_loras_chain_after_checkpoint_and_add_triggers(self):
+        cat = models.catalog([{"key": "mia", "folder": "loras", "repo": "me/mia", "file": "mia.safetensors", "trigger": "mia_girl"},
+                              {"key": "ink", "folder": "loras", "repo": "me/ink", "file": "ink.safetensors"}])
+        wf, _ = workflow.build(BASE | {"loras": [{"model": "mia"}, {"model": "ink", "strength": 0.5}], "ref": str(self.d / "src.png")}, cat)
+        self.assertEqual(wf[workflow.POS]["inputs"]["text"], "1girl, mia_girl")
+        self.assertEqual(wf["91"]["inputs"]["model"], ["90", 0])
+        self.assertEqual(wf["23"]["inputs"]["model"], ["91", 0])  # IP-Adapter sits on top of the LoRAs
+        self.assertEqual(wf[workflow.POS]["inputs"]["clip"], ["91", 1])
+        self.assertEqual(wf[workflow.STAGE1_DECODE]["inputs"]["vae"], [workflow.CKPT, 2])
+        self.assertEqual(sorted(m["key"] for m in models.resolve(wf, cat))[:3], ["checkpoint", "clip_vision", "detector_face"])
+
     def test_resolve_names_models_and_reports_them(self):
         cat = models.catalog([{"key": "checkpoint", "folder": "checkpoints", "repo": "me/other", "file": "other.safetensors"}])
         wf, _ = workflow.build(BASE, cat)

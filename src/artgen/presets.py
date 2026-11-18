@@ -7,7 +7,20 @@ from artgen.project import Project
 # Keys copied from a preset into a job as they are.
 JOB_KEYS = ("width", "height", "steps", "cfg", "sampler", "workflow", "gpu",
             "ref_model", "ref_weight", "ref_end_at", "ref_weight_type", "ref_embeds_scaling", "ref_hires",
-            "denoise", "upscale", "rembg", "megapixels")
+            "denoise", "upscale", "rembg", "megapixels", "loras", "style")
+
+
+def style(project: Project, job: dict) -> dict:
+    """Puts the painting style (<prompts>/styles/<name>.toml: positive, negative, loras) in front of the job's own text."""
+    if not job.get("style"):
+        return job
+    f = project.prompts / "styles" / f"{job['style']}.toml"
+    if not f.is_file():
+        raise SystemExit(f"no style {job['style']!r} ({f})")
+    s = tomllib.loads(f.read_text(encoding="utf-8"))
+    join = lambda *xs: ", ".join(x for x in xs if x)
+    return job | {"prompt": join(s.get("positive", ""), job["prompt"]), "negative": join(s.get("negative", ""), job["negative"]),
+                  "loras": [*s.get("loras", []), *job.get("loras", [])]}
 
 
 def load(project: Project, spec: str) -> list[dict]:

@@ -12,7 +12,7 @@ from artgen import gen, project
 
 def cmd_gen(a: argparse.Namespace) -> None:
     p = project.load()
-    keys = ("prompt", "negative", "width", "height", "n", "workflow", "image", "mask", "denoise", "upscale")
+    keys = ("style", "prompt", "negative", "width", "height", "n", "workflow", "image", "mask", "denoise", "upscale")
     base = p.gen | {k: v for k in keys if (v := getattr(a, k)) is not None} | ({"rembg": True} if a.rembg else {})
     base |= {k: str(Path(base[k]).resolve()) for k in ("image", "mask") if k in base}
     # On the command line a non-zero seed and a tag win over the preset.
@@ -105,6 +105,7 @@ def parser() -> argparse.ArgumentParser:
     g = sub.add_parser("gen", help="generate images with ComfyUI on Modal")
     g.add_argument("--preset", default="", help="<who>/<name> from the prompts directory")
     g.add_argument("--jobs", type=Path, help="JSON list of jobs, run in one session")
+    g.add_argument("--style", help="painting style from <prompts>/styles/<name>.toml")
     g.add_argument("--prompt")
     g.add_argument("--negative")
     g.add_argument("--seed", type=int, default=0)

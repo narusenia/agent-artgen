@@ -16,6 +16,7 @@
     scaledown = 30             # seconds an idle container stays up
 
     [gen]                      # defaults for `artgen gen`; the command line wins
+    style = ""                 # painting style: <prompts>/styles/<name>.toml
     workflow = "sdxl_txt2img"
     width = 832
     height = 1216
@@ -31,7 +32,7 @@ CONFIG = "artgen.toml"
 MODAL_GPUS = ("T4", "L4", "A10G", "L40S", "A100", "H100")  # what Modal offers; a project narrows it with `gpus`
 MODAL_DEFAULTS = {"gpu": "T4", "gpus": ["T4", "L4"], "max_apps": 1, "timeout": 900, "scaledown": 30}
 COMFY_DEFAULTS = {"backend": "modal", "url": "http://127.0.0.1:8188"}
-GEN_DEFAULTS = {"prompt": "", "negative": "", "seed": 0, "width": 832, "height": 1216, "n": 2, "tag": "", "workflow": "sdxl_txt2img"}
+GEN_DEFAULTS = {"style": "", "prompt": "", "negative": "", "seed": 0, "width": 832, "height": 1216, "n": 2, "tag": "", "workflow": "sdxl_txt2img"}
 TOP_KEYS = {"out", "prompts", "poses", "comfy", "modal", "gen", "model"}
 BACKENDS = ("modal", "local")
 

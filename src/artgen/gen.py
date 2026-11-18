@@ -23,7 +23,7 @@ def expand(project: Project, base: dict, job: dict) -> list[dict]:
 def plan(project: Project, base: dict, job: dict, jobs_file: Path | None = None) -> list[dict]:
     """Jobs from a JSON list file, or the single job given on the command line."""
     jobs = json.loads(jobs_file.read_text()) if jobs_file else [job]
-    todo = [x for j in jobs for x in expand(project, base, j)]
+    todo = [presets.style(project, x) for j in jobs for x in expand(project, base, j)]
     if not all(j["prompt"] or j["workflow"] == "post" for j in todo):
         raise SystemExit("prompt is required (give --prompt, --preset or --jobs)")
     return todo

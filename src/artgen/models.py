@@ -7,7 +7,7 @@ Standard library only: the containers import this module.
 import tomllib
 from importlib.resources import files
 
-FIELDS = {"key", "folder", "file", "name", "repo", "rev", "url", "sha256", "scale"}
+FIELDS = {"key", "folder", "file", "name", "repo", "rev", "url", "sha256", "scale", "trigger"}
 
 
 def _check(m: dict, where: str) -> dict:
