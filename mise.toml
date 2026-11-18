@@ -1,0 +1,16 @@
+[tools]
+python = "3.13"
+uv = "0.11"
+
+[tasks.setup]
+description = "Install dependencies"
+run = "uv sync"
+
+[tasks.test]
+description = "Run the unit tests"
+run = "uv run python -m unittest discover -s tests"
+
+[tasks.check]
+description = "Tests plus a check that a Modal GPU can be rented"
+depends = ["test"]
+run = "uv run artgen check"
