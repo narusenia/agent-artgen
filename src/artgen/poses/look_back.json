@@ -1,5 +1,5 @@
 {
-  "name": "振り返る（背を向けて左の肩越しに後ろを見る）",
+  "name": "looking back over the left shoulder",
   "joints": {
     "spine": [0, 0, 25],
     "chest": [0, 0, 30],

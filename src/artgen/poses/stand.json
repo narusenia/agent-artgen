@@ -1,5 +1,5 @@
 {
-  "name": "直立",
+  "name": "standing",
   "joints": {
     "shoulder_r": [0, 6, 0],
     "shoulder_l": [0, -6, 0],

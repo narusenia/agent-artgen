@@ -1,5 +1,5 @@
 {
-  "name": "剣を構える（中段・右足前・両手で握る）",
+  "name": "sword at middle guard, right foot forward, both hands",
   "joints": {
     "pelvis": [0, 0, 15],
     "spine": [5, 0, 0],

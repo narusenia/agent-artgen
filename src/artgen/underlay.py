@@ -1,28 +1,25 @@
-"""撮影指示 JSON → ControlNet 用の下絵（深度 PNG と OpenPose PNG）。手元の CPU で動く。
+"""Shot JSON -> underlays for ControlNet (a depth PNG and an OpenPose PNG). Runs on the local CPU.
 
-    uv run --project tools/artgen python tools/artgen/artgen/underlay.py <shot.json> [-o 出力先]
-
-撮影指示の形は tools/artgen/shots.schema.md、ポーズは tools/artgen/poses/。
-座標: Blender の Z 上向き、単位 m。人形は向き 0 で -Y を向き、+X が人形の左。
+Shot format: docs/shots.md. Poses: docs/poses.md.
+Coordinates: Blender, Z up, metres. At facing 0 the doll faces -Y and +X is the doll's left.
 """
 
-import argparse
 import json
 import math
 import struct
 import zlib
 from pathlib import Path
 
-import bpy  # bmesh・mathutils より先に読む
+import bpy  # must be imported before bmesh and mathutils
 import bmesh
 import numpy as np
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Euler, Matrix, Vector
 
-POSES = Path(__file__).resolve().parent.parent / "poses"
-HEADS = 6.5  # 頭身
+POSES = Path(__file__).resolve().parent / "poses"
+HEADS = 6.5  # heads tall
 
-# (関節, 親, 親からの位置 [頭の高さ単位])。基本の姿勢は直立・腕は下ろす。
+# (joint, parent, offset from the parent in head heights). The rest pose stands upright with arms down.
 _RIGHT = [
     ("shoulder_r", "chest", (-0.62, 0, 0.6)),
     ("elbow_r", "shoulder_r", (0, 0, -1.25)),
@@ -46,7 +43,7 @@ FACE = {"nose": (0, -0.5, 0.4), "eye_r": (-0.17, -0.42, 0.52), "eye_l": (0.17, -
         "ear_r": (-0.44, 0, 0.45), "ear_l": (0.44, 0, 0.45)}
 HEAD_CENTER = (0, -0.05, 0.45)
 
-# OpenPose（COCO 18点）の並び・線・色。controlnet_aux の draw_bodypose と同じ。
+# OpenPose (COCO 18 points) order, limbs and colours, as in controlnet_aux draw_bodypose.
 COCO18 = ["nose", "neck", "shoulder_r", "elbow_r", "wrist_r", "shoulder_l", "elbow_l", "wrist_l",
           "hip_r", "knee_r", "ankle_r", "hip_l", "knee_l", "ankle_l", "eye_r", "eye_l", "ear_r", "ear_l"]
 LIMBS = [(1, 2), (1, 5), (2, 3), (3, 4), (5, 6), (6, 7), (1, 8), (8, 9), (9, 10), (1, 11), (11, 12),
@@ -55,9 +52,9 @@ COLORS = [(255, 0, 0), (255, 85, 0), (255, 170, 0), (255, 255, 0), (170, 255, 0)
           (0, 255, 0), (0, 255, 85), (0, 255, 170), (0, 255, 255), (0, 170, 255), (0, 85, 255),
           (0, 0, 255), (85, 0, 255), (170, 0, 255), (255, 0, 255), (255, 0, 170), (255, 0, 85)]
 
-# 寄り引き → 画面の縦に収める範囲（身長に対する割合）
+# Framing -> lowest body height kept in frame (fraction of the figure height)
 SHOTS = {"full": (0,), "knee": (0.25,), "waist": (0.5,), "bust": (0.68,), "face": (0.8,)}
-# カメラの既定。dynamic が既定、静かな場面は "mood": "calm"。撮影指示の camera の値が優先
+# Camera defaults per mood ("dynamic" unless the shot says "calm"); the shot's camera values win
 MOODS = {
     "dynamic": {"shot": "full", "lens": 28, "pitch": 20, "yaw": 25, "roll": 8, "fill": 0.88, "place": [0.5, 0.5], "fit_props": True},
     "calm": {"shot": "full", "lens": 50, "pitch": 0, "yaw": 0, "roll": 0, "fill": 0.88, "place": [0.5, 0.5], "fit_props": True},
@@ -65,7 +62,7 @@ MOODS = {
 
 
 def solve(rotations, height, facing, position):
-    """関節の回転（度、XYZ）→ 関節ごとの (位置, 向きの行列)。足の低い方を床に着ける。"""
+    """Joint rotations (degrees, XYZ) -> (position, orientation matrix) per joint, with the lower foot on the floor."""
     h = height / HEADS
     base = Euler((0, 0, math.radians(facing))).to_matrix()
     world = {}
@@ -109,7 +106,7 @@ def build_doll(bm, world, h, hold):
         for a, b, r in (("shoulder", "elbow", 0.2), ("elbow", "wrist", 0.16), ("wrist", "hand", 0.12),
                         ("hip", "knee", 0.3), ("knee", "ankle", 0.22), ("ankle", "toe", 0.14)):
             capsule(P[f"{a}_{s}"], P[f"{b}_{s}"], r * h)
-    if hold == "sword":  # 右手で握る。手を下ろしたとき刃が前を向く
+    if hold == "sword":  # held in the right hand; with the arm down the blade points forward
         grip = P["wrist_r"] + M["wrist_r"] @ Vector((0, 0, -0.3 * h))
         d = M["wrist_r"] @ Vector((0, -1, 0))
         side = M["wrist_r"] @ Vector((1, 0, 0))
@@ -121,10 +118,10 @@ def build_doll(bm, world, h, hold):
 
 
 def place_camera(cam, spec, size, pts):
-    """向き（方位・仰角・傾き）とレンズを守ったまま、pts が余白込みで枠に収まる距離を探し、
-    レンズのシフトで pts の外接の中心を画面の place に置く。"""
+    """Keeps the direction (yaw, pitch, roll) and lens, finds the distance at which pts fill the frame with
+    the requested margin, and shifts the lens so the centre of their bounds lands on `place`."""
     w, h = size
-    tan_l = 18 / spec["lens"]  # 長辺の半画角の tan（36mm 判）
+    tan_l = 18 / spec["lens"]  # tan of half the long-side angle of view (35mm format)
     half = (tan_l * w / max(w, h), tan_l * h / max(w, h))
     rot = (Euler((math.pi / 2 + math.radians(spec["pitch"]), 0, math.radians(spec["yaw"]))).to_matrix()
            @ Matrix.Rotation(math.radians(spec["roll"]), 3, "Z"))
@@ -137,7 +134,7 @@ def place_camera(cam, spec, size, pts):
         return c, None if any(q.z > -0.05 for q in qs) else [(q.x / -q.z, q.y / -q.z) for q in qs]
 
     lo, hi = 0.05, 200.0
-    for _ in range(60):  # 遠いほど小さく写る
+    for _ in range(60):  # farther means smaller
         d = (lo + hi) / 2
         uv = project(d)[1]
         fits = uv and all(max(a) - min(a) <= 2 * half[i] * spec["fill"] for i, a in enumerate(zip(*uv)))
@@ -145,9 +142,9 @@ def place_camera(cam, spec, size, pts):
     c, uv = project(hi)
     shift = []
     for i, (a, place) in enumerate(zip(zip(*uv), spec["place"])):
-        span = (max(a) - min(a)) / (2 * half[i])  # 枠に対する幅
-        place = min(max(place, span / 2 + 0.02), 1 - span / 2 - 0.02)  # はみ出さない所まで寄せる
-        sign = 1 if i == 0 else -1  # place は左上が 0、カメラの y は上向き
+        span = (max(a) - min(a)) / (2 * half[i])  # extent relative to the frame
+        place = min(max(place, span / 2 + 0.02), 1 - span / 2 - 0.02)  # move toward place only as far as stays in frame
+        sign = 1 if i == 0 else -1  # place is 0 at the top left; camera y points up
         shift.append(((min(a) + max(a)) / 2 - sign * (place - 0.5) * 2 * half[i]) / (2 * tan_l))
     cam.location, cam.rotation_euler = c, rot.to_euler()
     cam.data.lens, cam.data.sensor_width, cam.data.sensor_fit = spec["lens"], 36, "AUTO"
@@ -155,7 +152,7 @@ def place_camera(cam, spec, size, pts):
 
 
 def fit_points(pts, props, height, spec):
-    """寄り引きの範囲に入る体の点（＋持ち物）。範囲の下端は体の軸上の点で示す。"""
+    """Body points (and props) inside the framing; the lower edge is a point on the body axis."""
     z0 = SHOTS[spec["shot"]][0] * height
     out = [p for p in pts.values() if p.z >= z0]
     if z0 > 0:
@@ -170,7 +167,7 @@ def depth_material(near, far):
     cd, mr = nt.nodes.new("ShaderNodeCameraData"), nt.nodes.new("ShaderNodeMapRange")
     em, out = nt.nodes.new("ShaderNodeEmission"), nt.nodes.new("ShaderNodeOutputMaterial")
     mr.inputs["From Min"].default_value, mr.inputs["From Max"].default_value = near, far
-    mr.inputs["To Min"].default_value, mr.inputs["To Max"].default_value = 1.0, 0.0  # 近いほど白
+    mr.inputs["To Min"].default_value, mr.inputs["To Max"].default_value = 1.0, 0.0  # nearer is whiter
     nt.links.new(cd.outputs["View Z Depth"], mr.inputs["Value"])
     nt.links.new(mr.outputs["Result"], em.inputs["Color"])
     nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
@@ -189,7 +186,7 @@ def write_png(path, rgb):
 
 
 def draw_openpose(people, w, h, stick=4, radius=4):
-    """people: 人ごとに 18 点の (x, y) か None。controlnet_aux と同じく線は色の 6 割、点は元の色。"""
+    """people: 18 (x, y) points or None per person. As in controlnet_aux, limbs use 60% of the colour, joints the full colour."""
     canvas = np.zeros((h, w, 3), np.uint8)
     yy, xx = np.mgrid[0:h, 0:w]
     for pts in people:
@@ -207,19 +204,20 @@ def draw_openpose(people, w, h, stick=4, radius=4):
     return canvas
 
 
-def render(shot, out_dir):
+def render(shot: dict, out_dir: Path, poses: list[Path] = ()) -> tuple[Path, Path]:
+    """Writes <id>_depth.png and <id>_openpose.png. `poses` are extra shelves searched before the bundled one."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
     w, h = shot["size"]
     figs = []
     bm = bmesh.new()
     for fig in shot["figures"]:
-        pose = json.loads((POSES / f"{fig['pose']}.json").read_text())
+        pose = json.loads(next(p for d in (*poses, POSES) if (p := Path(d, f"{fig['pose']}.json")).exists()).read_text())
         rot = {**pose["joints"], **fig.get("adjust", {})}
         world, hu = solve(rot, fig.get("height", 1.55), fig.get("facing", 0), fig.get("position", (0, 0)))
         props = build_doll(bm, world, hu, fig.get("hold"))
         figs.append((fig, keypoints(world, hu), props))
-    bmesh.ops.create_grid(bm, x_segments=1, y_segments=1, size=30)  # 床
+    bmesh.ops.create_grid(bm, x_segments=1, y_segments=1, size=30)  # floor
     mesh = bpy.data.meshes.new("doll")
     bm.to_mesh(mesh)
     bm.free()
@@ -233,7 +231,7 @@ def render(shot, out_dir):
     place_camera(cam, spec, (w, h), fit_points(main_pts, main_props, main.get("height", 1.55), spec))
     scene.camera = cam
     scene.render.resolution_x, scene.render.resolution_y, scene.render.resolution_percentage = w, h, 100
-    bpy.context.view_layer.update()  # matrix_world を置いた位置に合わせる
+    bpy.context.view_layer.update()  # refresh matrix_world after placing
 
     inv = cam.matrix_world.inverted()
     zs = [-(inv @ p).z for _, pts, props in figs for p in [*pts.values(), *props]]
@@ -241,7 +239,7 @@ def render(shot, out_dir):
     scene.render.engine = "CYCLES"
     scene.cycles.device, scene.cycles.samples, scene.cycles.use_denoising = "CPU", 8, False
     scene.cycles.max_bounces = 0
-    scene.view_settings.view_transform = "Raw"  # 深度の値を色の変換なしで書く
+    scene.view_settings.view_transform = "Raw"  # write depth values without a colour transform
     scene.render.image_settings.file_format, scene.render.image_settings.color_mode = "PNG", "BW"
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -255,31 +253,16 @@ def render(shot, out_dir):
         row = []
         for name in COCO18:
             p = pts[name]
-            if name in FACE:  # 頭の陰に入った顔の点は OpenPose と同じく出さない
+            if name in FACE:  # like OpenPose, drop face points hidden behind the head
                 out, view = (p - pts["head_center"]).normalized(), (cam_pos - p).normalized()
                 if out.dot(view) < -0.3:
                     row.append(None)
                     continue
             x, y, _ = world_to_camera_view(scene, cam, p)
             if fig is main and p.z >= SHOTS[spec["shot"]][0] * main.get("height", 1.55) and not (0 <= x <= 1 and 0 <= y <= 1):
-                print(f"warning: {fig.get('name', '?')} の {name} が画面の外")
+                print(f"warning: {name} of {fig.get('name', '?')} is out of frame")
             row.append((x * w, (1 - y) * h))
         people.append(row)
     pose_png = out_dir / f"{shot['id']}_openpose.png"
     write_png(pose_png, draw_openpose(people, w, h))
     return depth, pose_png
-
-
-def main():
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("shot", type=Path)
-    ap.add_argument("-o", "--out", type=Path, help="既定: <作品>/art/out/underlay/")
-    a = ap.parse_args()
-    shot = json.loads(a.shot.read_text())
-    out = a.out or a.shot.resolve().parent.parent / "out" / "underlay"
-    for p in render(shot, out):
-        print(p)
-
-
-if __name__ == "__main__":
-    main()

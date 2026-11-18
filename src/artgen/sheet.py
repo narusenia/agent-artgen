@@ -1,37 +1,32 @@
-"""設定画の型紙（TOML）から、絵に文字・注記・配色見本を重ねた PNG を作る。
+"""Character sheet TOML -> a PNG with the pictures, a title, callouts, a spec table and a palette laid over them.
 
-    uv run --project tools/artgen python tools/artgen/artgen/sheet.py <型紙.toml> [-o 出力.png]
-
-型紙の書式は tools/artgen/sheets.schema.md。出力の既定は <型紙のある所>/../out/sheets/<型紙の名前>.png。
+Sheet format: docs/sheets.md.
 """
 
-import argparse
-import sys
 import tomllib
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-FONTS = Path(__file__).resolve().parent.parent / "fonts"
+from artgen import fonts
+
 FACES = {"sans": "NotoSansJP", "serif": "NotoSerifJP"}
 INK = "#2b2b2b"
 SUB = "#6b6b6b"
 
 
 def font(face: str, size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
-    path = FONTS / f"{FACES[face]}-{'Bold' if bold else 'Regular'}.otf"
-    if not path.exists():
-        sys.exit(f"フォントがない: {path}\n先に sh tools/artgen/fonts/fetch.sh を実行する")
+    path = fonts.path(f"{FACES[face]}-{'Bold' if bold else 'Regular'}.otf")
     return ImageFont.truetype(str(path), size)
 
 
 def wrap(text: str, f: ImageFont.FreeTypeFont, width: int) -> list[str]:
-    # 日本語は語の切れ目に空白がないので、一字ずつ詰めて折る
+    # Japanese has no spaces between words, so wrap character by character
     lines = []
     for para in text.splitlines() or [""]:
         line = ""
         for ch in para:
-            # 句読点・閉じ括弧は行頭に送らず、前の行にぶら下げる
+            # keep punctuation and closing brackets off the start of a line
             if line and f.getlength(line + ch) > width and ch not in "、。，．）」』":
                 lines.append(line)
                 line = ""
@@ -48,7 +43,7 @@ def render(spec: dict, base: Path) -> Image.Image:
     im = Image.new("RGB", (W, H), cv.get("background", "#ffffff"))
     d = ImageDraw.Draw(im)
 
-    # 見出し: ルビ → 名前 → 英字の副題、の順に左上から積む
+    # title: ruby, name, then the Latin subtitle, stacked from the top left
     t = spec.get("title", {})
     y = m
     name_f = font(t.get("font", "serif"), t.get("size", 64), bold=True)
@@ -67,7 +62,7 @@ def render(spec: dict, base: Path) -> Image.Image:
         y = d.textbbox((m, y), t["subtitle"], font=sub_f)[3]
     d.line([(m, y + 20), (W - m, y + 20)], fill="#cfcac0", width=2)
 
-    # 絵: 幅だけ指定して縦横比は保つ。注記のため、元画像→キャンバスの変換を覚えておく
+    # pictures: width only, aspect kept; remember the image -> canvas transform for callouts
     places = []
     for img in spec.get("image", []):
         src = Image.open(base / img["path"]).convert("RGB")
@@ -75,7 +70,7 @@ def render(spec: dict, base: Path) -> Image.Image:
         im.paste(src.resize((img["width"], round(src.height * s)), Image.LANCZOS), tuple(img["pos"]))
         places.append((img["pos"], s))
 
-    # 注記: 白い縁取りの線で、紺の上でも黒い背景でも見える
+    # callouts: lines with a white edge so they read on navy and on black
     nf = font(face, cv.get("note_size", 30), bold=True)
     for n in spec.get("note", []):
         (ox, oy), s = places[n.get("image", 0)]
@@ -99,7 +94,7 @@ def render(spec: dict, base: Path) -> Image.Image:
         d.text((x, y), text, font=head, fill=SUB)
         return y + head.size + 16
 
-    # 項目表
+    # spec table
     if tb := spec.get("table"):
         x, y = tb["pos"]
         y = heading(x, y, tb.get("heading", "項目")) if tb.get("heading", "項目") else y
@@ -111,7 +106,7 @@ def render(spec: dict, base: Path) -> Image.Image:
                 y += body.size + 12
             y += 6
 
-    # 配色見本
+    # palette
     if pl := spec.get("palette"):
         x, y = pl["pos"]
         y = heading(x, y, pl.get("heading", "配色"))
@@ -122,7 +117,7 @@ def render(spec: dict, base: Path) -> Image.Image:
             d.text((x + sw + 20, y + sw / 2 + 8), code, font=font("sans", body.size * 2 // 3), fill=SUB, anchor="lt")
             y += sw + 18
 
-    # 一言
+    # memo
     if mo := spec.get("memo"):
         x, y = mo["pos"]
         y = heading(x, y, mo.get("heading", "メモ"))
@@ -132,17 +127,8 @@ def render(spec: dict, base: Path) -> Image.Image:
     return im
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("sheet", type=Path, help="型紙の TOML")
-    ap.add_argument("-o", "--out", type=Path, help="出力の PNG")
-    a = ap.parse_args()
-    spec = tomllib.loads(a.sheet.read_text(encoding="utf-8"))
-    out = a.out or a.sheet.resolve().parent.parent / "out" / "sheets" / f"{a.sheet.stem}.png"
+def build(sheet: Path, out: Path) -> Path:
+    spec = tomllib.loads(sheet.read_text(encoding="utf-8"))
     out.parent.mkdir(parents=True, exist_ok=True)
-    render(spec, a.sheet.resolve().parent).save(out)
-    print(out)
-
-
-if __name__ == "__main__":
-    main()
+    render(spec, sheet.resolve().parent).save(out)
+    return out
