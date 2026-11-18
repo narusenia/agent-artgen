@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -51,6 +52,10 @@ def cmd_sheet(a: argparse.Namespace) -> None:
 
 
 def cmd_show(a: argparse.Namespace) -> None:
+    if platform.system() == "Windows":
+        for p in a.paths:
+            os.startfile(p)  # type: ignore[attr-defined]
+        return
     subprocess.run(["open" if platform.system() == "Darwin" else "xdg-open", *map(str, a.paths)], check=True)
 
 

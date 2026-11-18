@@ -32,7 +32,22 @@ def stop_all() -> list[str]:
     return ids
 
 
+def _alive_windows(pid: int) -> bool:
+    import ctypes
+
+    k = ctypes.windll.kernel32  # type: ignore[attr-defined]
+    h = k.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not h:
+        return False
+    code = ctypes.c_ulong()
+    ok = k.GetExitCodeProcess(h, ctypes.byref(code))
+    k.CloseHandle(h)
+    return bool(ok) and code.value == 259  # STILL_ACTIVE
+
+
 def alive(pid: int) -> bool:
+    if os.name == "nt":  # on Windows, os.kill(pid, 0) sends CTRL_C_EVENT instead of checking
+        return _alive_windows(pid)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:

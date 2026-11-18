@@ -24,5 +24,29 @@ class RunsTest(unittest.TestCase):
             self.assertEqual(runs.running(out), [])
 
 
+
+class WindowsTest(unittest.TestCase):
+    def test_alive_never_signals_on_windows(self):
+        from unittest import mock
+
+        with mock.patch.object(runs.os, "name", "nt"), mock.patch.object(runs, "_alive_windows", return_value=True) as w, \
+                mock.patch.object(runs.os, "kill") as kill:
+            self.assertTrue(runs.alive(123))
+        w.assert_called_once_with(123)
+        kill.assert_not_called()
+
+    def test_show_uses_startfile_on_windows(self):
+        from unittest import mock
+
+        from artgen import cli
+
+        a = cli.parser().parse_args(["show", "a.png", "b.png"])
+        with mock.patch.object(cli.platform, "system", return_value="Windows"), \
+                mock.patch.object(cli.os, "startfile", create=True) as start, mock.patch.object(cli.subprocess, "run") as run:
+            a.func(a)
+        self.assertEqual(start.call_count, 2)
+        run.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
