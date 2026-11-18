@@ -65,7 +65,7 @@ timeout = 900              # seconds per ComfyUI container
 scaledown = 30             # seconds an idle container stays up
 
 [gen]                      # defaults for `artgen gen`; the command line wins
-workflow = "sdxl_txt2img"  # or sdxl_hires_detailer
+workflow = "sdxl_txt2img"  # or sdxl_hires_detailer, or sdxl_hires_eyes (model upscale and an eye pass)
 width = 832
 height = 1216
 n = 2

@@ -64,6 +64,13 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(wf[workflow.STAGE1_DECODE]["inputs"]["vae"], [workflow.CKPT, 2])
         self.assertEqual(sorted(m["key"] for m in models.resolve(wf, cat))[:3], ["checkpoint", "clip_vision", "detector_face"])
 
+    def test_hires_eyes_upscales_with_the_model_and_ends_with_the_eye_pass(self):
+        cat = models.catalog([{"key": "upscaler", "folder": "upscale_models", "repo": "me/x2", "file": "x2.pth", "scale": 2}])
+        wf, _ = workflow.build(BASE | {"workflow": "sdxl_hires_eyes"}, cat)
+        self.assertEqual(wf["11"]["inputs"]["scale_by"], 0.75)
+        self.assertEqual(wf["9"]["inputs"]["images"], ["28", 0])
+        self.assertIn("detector_eyes", [m["key"] for m in models.resolve(wf, cat)])
+
     def test_resolve_names_models_and_reports_them(self):
         cat = models.catalog([{"key": "checkpoint", "folder": "checkpoints", "repo": "me/other", "file": "other.safetensors"}])
         wf, _ = workflow.build(BASE, cat)

@@ -46,6 +46,8 @@ def build(job: dict, cat: dict[str, dict] | None = None) -> tuple[dict, dict[str
     wf = json.loads(files("artgen").joinpath("workflows", f"{job['workflow']}.json").read_text())
     cat = cat or models.catalog()
     scale = cat["upscaler"].get("scale", 4)
+    if "25" in wf and wf["25"]["class_type"] == "UpscaleModelLoader":  # sdxl_hires_eyes: model upscale, then down to 1.5x
+        wf["11"]["inputs"]["scale_by"] = 1.5 / scale
     inputs: dict[str, bytes] = {}
     if job["workflow"] == "ph3_edit":
         if not job.get("image"):

@@ -30,6 +30,15 @@ repo = "Bingsu/adetailer"
 file = "hand_yolov8s.pt"
 name = "bbox/hand_yolov8s.pt"
 
+# Eye detector for the eye pass of sdxl_hires_eyes (Anzhc, AGPL-3.0; used on Modal only, not shipped with any work)
+[[model]]
+key = "detector_eyes"
+folder = "ultralytics_segm"
+repo = "Anzhc/Anzhcs_YOLOs"
+rev = "f5a2306d7fed4f3cfc26c25ff1ab2e3f3cfce855"
+file = "Anzhc Eyes -seg-hd.pt"
+name = "segm/Anzhc Eyes -seg-hd.pt"
+
 # IP-Adapter (job key ref): the SDXL PLUS model, one trained on NoobAI, and the ViT-H encoder both use
 [[model]]
 key = "ipadapter_plus"

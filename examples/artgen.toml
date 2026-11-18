@@ -18,7 +18,7 @@ scaledown = 30             # seconds an idle container stays up
 
 [gen]                      # defaults for `artgen gen`; the command line wins
 style = "anime-cel"        # <prompts>/styles/anime-cel.toml
-workflow = "sdxl_txt2img"  # sdxl_txt2img, sdxl_hires_detailer, post or ph3_edit
+workflow = "sdxl_txt2img"  # sdxl_txt2img, sdxl_hires_detailer, sdxl_hires_eyes, post or ph3_edit
 width = 832
 height = 1216
 n = 2

@@ -65,7 +65,7 @@ timeout = 900              # ComfyUI のコンテナ 1 つの制限時間（秒�
 scaledown = 30             # 使っていないコンテナを残す時間（秒）
 
 [gen]                      # artgen gen の既定値。コマンドで指定した値が優先
-workflow = "sdxl_txt2img"  # か sdxl_hires_detailer
+workflow = "sdxl_txt2img"  # か sdxl_hires_detailer、sdxl_hires_eyes（モデルで拡大し、目も描き直す）
 width = 832
 height = 1216
 n = 2
