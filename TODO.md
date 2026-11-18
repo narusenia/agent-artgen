@@ -4,7 +4,8 @@ Top to bottom. Mark done items with [x] and the date.
 
 ## ComfyUI and models
 
-- [ ] Upgrade ComfyUI to v0.44 or later (needed for P-H3-Image) and re-pin the custom nodes; bump the Modal image builder version so debian_slim works again
+- [x] Upgrade ComfyUI to v0.44 or later (needed for P-H3-Image) and re-pin the custom nodes (2026-11-18: v0.45.6, torch 2.14.1 cu130, Impact-Pack 8.31, Subpack 1.3.4; T4 test run passed)
+- [ ] Bump the Modal image builder version in the workspace settings so debian_slim (and Python 3.12) build again
 - [ ] Styles: `styles/<name>.toml` (e.g. `anime-cel`, `lightnovel`) selectable from a preset or `[gen]`, so the painting style is not fixed per work
 - [ ] Models and LoRAs declared by the work (`[[model]]`, `[[lora]]` with source, strength, trigger words) and placed on the volume on first use
 - [ ] Compare generation models (Illustrious / NoobAI family, Krea 2, FLUX.2 klein) on the same character

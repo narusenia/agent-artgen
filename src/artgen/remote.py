@@ -17,28 +17,28 @@ from artgen import comfy, models
 COMFY_DIR = "/root/comfy/ComfyUI"
 VOLUME = "/models"
 PORT = 8188
-TORCH = "torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0"
-CU124 = "https://download.pytorch.org/whl/cu124"
+# ComfyUI asks for a cu130 build on 20-series GPUs and later (T4 is one)
+TORCH = "torch==2.14.1 torchvision==0.29.1"
+CU130 = "https://download.pytorch.org/whl/cu130"
 
 # Weights go on the volume once and are symlinked into ComfyUI's model folders at start.
 vol = modal.Volume.from_name("artgen-models", create_if_missing=True)
 
 # Building needs no GPU. comfy-cli cannot find old releases, so ComfyUI is installed with git and pip.
 comfy_image = (
-    # debian_slim resolves to bullseye on this image builder version and its security repo 404s
+    # debian_slim resolves to bullseye on the workspace's image builder version and its security repo 404s
     modal.Image.from_registry("python:3.11-slim-bookworm")
     .apt_install("git", "libgl1", "libglib2.0-0")
-    .run_commands(f"git clone --depth 1 --branch v0.3.71 https://github.com/comfyanonymous/ComfyUI {COMFY_DIR}")
-    .pip_install(*TORCH.split(), index_url=CU124)
-    # The server imports requests without listing it. transformers 5 is untested with this ComfyUI.
-    .run_commands(f"pip install -r {COMFY_DIR}/requirements.txt requests 'transformers<5'")
+    .run_commands(f"git clone --depth 1 --branch v0.45.6 https://github.com/comfyanonymous/ComfyUI {COMFY_DIR}")
+    .pip_install(*TORCH.split(), index_url=CU130)
+    .run_commands(f"pip install -r {COMFY_DIR}/requirements.txt")
     .run_commands(
         # Impact-Pack (FaceDetailer) pinned to the ComfyUI release's era, without letting it upgrade torch
-        f"git clone --depth 1 --branch 8.28 https://github.com/ltdrdata/ComfyUI-Impact-Pack {COMFY_DIR}/custom_nodes/ComfyUI-Impact-Pack",
+        f"git clone --depth 1 --branch 8.31 https://github.com/ltdrdata/ComfyUI-Impact-Pack {COMFY_DIR}/custom_nodes/ComfyUI-Impact-Pack",
         f"git clone https://github.com/ltdrdata/ComfyUI-Impact-Subpack {COMFY_DIR}/custom_nodes/ComfyUI-Impact-Subpack"
-        f" && git -C {COMFY_DIR}/custom_nodes/ComfyUI-Impact-Subpack checkout 50c7b71a6a224734cc9b21963c6d1926816a97f1",
+        f" && git -C {COMFY_DIR}/custom_nodes/ComfyUI-Impact-Subpack checkout c8e70fea548ff8e04dfb59a5835048211cf23caf",
         f"pip install -r {COMFY_DIR}/custom_nodes/ComfyUI-Impact-Pack/requirements.txt -r {COMFY_DIR}/custom_nodes/ComfyUI-Impact-Subpack/requirements.txt"
-        f" ultralytics==8.3.162 {TORCH} 'transformers<5' --extra-index-url {CU124}",
+        f" ultralytics==8.3.162 {TORCH} --extra-index-url {CU130}",
         # IPAdapter_plus has been in maintenance mode since 2025-04; pinned to its last commit
         f"git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus {COMFY_DIR}/custom_nodes/ComfyUI_IPAdapter_plus"
         f" && git -C {COMFY_DIR}/custom_nodes/ComfyUI_IPAdapter_plus checkout a0f451a5113cf9becb0847b92884cb10cbdec0ef",
