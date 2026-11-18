@@ -47,9 +47,24 @@ comfy_image = (
     .run_commands(f"printf '[default]\\n' > {COMFY_DIR}/custom_nodes/ComfyUI-Impact-Pack/impact-pack.ini")
     .add_local_python_source("artgen")
 )
-dl_image = modal.Image.debian_slim(python_version="3.11").uv_pip_install("huggingface-hub[hf_xet]==0.36.0").add_local_python_source("artgen")
+dl_image = (
+    modal.Image.debian_slim(python_version="3.11")
+    .uv_pip_install("huggingface-hub[hf_xet]==0.36.0", "safetensors==0.5.3")
+    .pip_install("torch==2.14.1", index_url="https://download.pytorch.org/whl/cpu")  # only to rewrite `strip` weights
+    .add_local_python_source("artgen")
+)
 
 app = modal.App("artgen")
+
+
+def _strip(src: Path, prefix: str, dest: Path) -> None:
+    """Training checkpoints keep wrapper prefixes (module._orig_mod.) that ComfyUI does not recognise."""
+    import torch
+    from safetensors.torch import save_file
+
+    sd = torch.load(src, map_location="cpu", weights_only=True)
+    save_file({k.removeprefix(prefix): v.contiguous() for k, v in sd.items() if torch.is_tensor(v)}, dest)
+    src.unlink()
 
 
 @app.function(image=dl_image, volumes={VOLUME: vol}, timeout=1800, max_containers=1)
@@ -59,7 +74,9 @@ def fetch_models(wanted: list[dict]) -> str:
 
     from huggingface_hub import hf_hub_download
 
-    missing = [m for m in wanted if not Path(VOLUME, m["folder"], m["file"]).exists()]
+    from artgen.models import stored
+
+    missing = [m for m in wanted if not Path(VOLUME, m["folder"], stored(m)).exists()]
     for m in missing:
         dest = Path(VOLUME, m["folder"], m["file"])
         if m.get("url"):
@@ -70,6 +87,8 @@ def fetch_models(wanted: list[dict]) -> str:
             dest.write_bytes(data)
         else:
             hf_hub_download(m["repo"], m["file"], local_dir=f"{VOLUME}/{m['folder']}", revision=m.get("rev"))
+        if m.get("strip"):
+            _strip(dest, m["strip"], Path(VOLUME, m["folder"], stored(m)))
     if missing:
         vol.commit()
     return f"downloaded {len(missing)}" if missing else "cached"

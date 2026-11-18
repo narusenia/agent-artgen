@@ -77,3 +77,14 @@ class CoreTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StripTest(unittest.TestCase):
+    def test_strip_keeps_the_model_as_safetensors(self):
+        from artgen import models
+
+        m = {"key": "bg", "folder": "background_removal", "repo": "a/b", "file": "w.pth", "strip": "module."}
+        self.assertEqual(models.stored(m), "w.safetensors")
+        self.assertEqual(models.name(m), "w.safetensors")
+        self.assertEqual(models.name(m | {"strip": None}), "w.pth")
+        self.assertTrue(models.catalog()["birefnet"]["strip"])

@@ -39,6 +39,7 @@ file = "Illustrious-XL-v2.0.safetensors"
 # repo = "<user>/<repo>"
 # file = "mia.safetensors"
 # trigger = "mia_girl"             # added to the prompt
+# strip = "module._orig_mod."      # a training checkpoint: drop this prefix from the weight names, kept as .safetensors
 
 # A file from any https URL needs its sha256:
 # [[model]]

@@ -7,7 +7,7 @@ Standard library only: the containers import this module.
 import tomllib
 from importlib.resources import files
 
-FIELDS = {"key", "folder", "file", "name", "repo", "rev", "url", "sha256", "scale", "trigger"}
+FIELDS = {"key", "folder", "file", "name", "repo", "rev", "url", "sha256", "scale", "trigger", "strip"}
 
 
 def _check(m: dict, where: str) -> dict:
@@ -29,8 +29,13 @@ def catalog(overrides: list[dict] | None = None, where: str = "artgen.toml") -> 
     return out | {m.get("key"): _check(m, where) for m in overrides or []}
 
 
+def stored(m: dict) -> str:
+    """Path under the folder once downloaded: with `strip`, the weights are renamed and kept as .safetensors."""
+    return m["file"].rsplit(".", 1)[0] + ".safetensors" if m.get("strip") else m["file"]
+
+
 def name(m: dict) -> str:
-    return m.get("name", m["file"])
+    return m.get("name", stored(m))
 
 
 def resolve(workflow: dict, cat: dict[str, dict]) -> list[dict]:
