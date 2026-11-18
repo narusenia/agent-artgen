@@ -83,13 +83,16 @@ sha256 = "f872d837d3c90ed2e05227bed711af5671a6fd1c9f7d7e91c911a61f155e99da"
 file = "RealESRGAN_x4plus_anime_6B.pth"
 scale = 4
 
-# Background removal (job key rembg), MIT
+# Background removal (job key rembg): ToonOut, BiRefNet fine-tuned on anime characters (MIT); it keeps the
+# background out of closed gaps in hair, where the general Comfy-Org/BiRefNet left it. Photos come out worse.
+# For photos: repo = "Comfy-Org/BiRefNet", file = "background_removal/birefnet.safetensors", no strip.
 [[model]]
 key = "birefnet"
 folder = "background_removal"
-repo = "Comfy-Org/BiRefNet"
-rev = "884af709e9b795d89dafbf97f29c8d6a2386f5c6"
-file = "background_removal/birefnet.safetensors"
+repo = "joelseytre/toonout"
+rev = "cbf720eca394edcde66b861a8a8c20fbabe9c748"
+file = "birefnet_finetuned_toonout.pth"
+strip = "module._orig_mod."
 
 # P-H3-Image (MiniMax-H3 based) for the ph3_edit workflow: the smallest set, w4a8 with the int8 VAE.
 # MiniMax-H3 community license. About 20 GB; peaks near 21 GB of VRAM at 8 MP.
