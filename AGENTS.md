@@ -4,7 +4,7 @@ artgen is a command-line image pipeline: ComfyUI on Modal for generation and edi
 
 ## Layout
 
-- `src/artgen/cli.py` — commands; `project.py` — `artgen.toml`; `gen.py` — job expansion and the Modal session; `workflow.py` — fills workflow JSON; `remote.py` — the Modal app (images, volume, ComfyUI class); `models.py` — weights on the volume; `runs.py` — app limit, `wait`, `stop`; `underlay.py`, `sheet.py`, `fonts.py`
+- `src/artgen/cli.py` — commands; `project.py` — `artgen.toml`; `gen.py` — job expansion and the Modal session; `workflow.py` — fills workflow JSON; `comfy.py` — the ComfyUI HTTP client (Modal and local); `remote.py` — the Modal app (images, volume, ComfyUI class); `models.py` — weights on the volume; `runs.py` — app limit, `wait`, `stop`; `underlay.py`, `sheet.py`, `fonts.py`
 - `src/artgen/workflows/` — ComfyUI workflows in API format; `src/artgen/poses/` — bundled pose shelf
 - `docs/` — file formats (shots, poses, sheets)
 - `TODO.md` — plans, top to bottom

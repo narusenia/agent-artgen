@@ -11,7 +11,8 @@ description: Generate and edit character art, sheets and pose underlays with the
 
 1. `artgen gen --dry-run …` to see the expanded jobs (prompt, seed, size, workflow, GPU). Fix mistakes here; a dry run costs nothing.
 2. Search cheaply: few images (`--n 1`–`2`), the default T4, `sdxl_txt2img`. Use `sdxl_hires_detailer` and higher resolution only for candidates the author liked.
-3. Never pick a GPU outside `[modal] gpus`, and ask the author before anything larger than L4.
+3. If `artgen.toml` has `[comfy] backend = "local"`, `gen` uses the author's own ComfyUI: no Modal app, no GPU choice, no `max_apps`. If it cannot connect, ask the author to start ComfyUI.
+4. Never pick a GPU outside `[modal] gpus`, and ask the author before anything larger than L4.
 
 ## Generating
 

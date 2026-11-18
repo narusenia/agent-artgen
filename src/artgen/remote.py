@@ -5,7 +5,6 @@ Based on modal-labs/modal-examples@c7c0e3f, 06_gpu_and_ml/comfyui.
 Keep this module free of local-only imports (bpy, PIL): the containers import it.
 """
 
-import json
 import subprocess
 import time
 import urllib.request
@@ -13,7 +12,7 @@ from pathlib import Path
 
 import modal
 
-from artgen import models
+from artgen import comfy, models
 
 COMFY_DIR = "/root/comfy/ComfyUI"
 VOLUME = "/models"
@@ -89,26 +88,4 @@ class ComfyUI:
 
     @modal.method()
     def run(self, workflow: dict, inputs: dict[str, bytes] | None = None) -> list[tuple[str, bytes]]:
-        """Runs a workflow and returns every SaveImage output as (file name, PNG bytes)."""
-        for name, data in (inputs or {}).items():
-            Path(COMFY_DIR, "input", name).write_bytes(data)
-        base = f"http://127.0.0.1:{PORT}"
-        req = urllib.request.Request(f"{base}/prompt", json.dumps({"prompt": workflow}).encode(), {"Content-Type": "application/json"})
-        pid = json.load(urllib.request.urlopen(req))["prompt_id"]
-        deadline = time.time() + 840
-        while time.time() < deadline:
-            hist = json.load(urllib.request.urlopen(f"{base}/history/{pid}"))
-            if pid in hist:
-                break
-            time.sleep(2)
-        else:
-            raise TimeoutError("ComfyUI did not finish")
-        entry = hist[pid]
-        if entry.get("status", {}).get("status_str") == "error":
-            raise RuntimeError(json.dumps(entry["status"], ensure_ascii=False)[:2000])
-        out = Path(COMFY_DIR, "output")
-        return [
-            (img["filename"], (out / img.get("subfolder", "") / img["filename"]).read_bytes())
-            for node in entry["outputs"].values()
-            for img in node.get("images", [])
-        ]
+        return comfy.run(f"http://127.0.0.1:{PORT}", workflow, inputs)

@@ -2,6 +2,7 @@
 
 import json
 import time
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -40,28 +41,42 @@ def save(dest: Path, seed: int, images: list[tuple[str, bytes]], wf: dict) -> No
     (dest / "workflow.json").write_text(json.dumps(wf, ensure_ascii=False, indent=2))
 
 
-def run(project: Project, todo: list[dict], gpu: str, out: Path | None = None) -> None:
+def run(project: Project, todo: list[dict], gpu: str, out: Path | None = None, backend: str | None = None) -> None:
     out = out or project.out
-    project.check_gpu(gpu)
-    if any(j.get("gpu", gpu) != gpu for j in todo):
-        raise SystemExit(f"a preset asks for a different gpu than {gpu}")
+    backend = backend or project.comfy["backend"]
+    if backend == "modal":
+        project.check_gpu(gpu)
+        if any(j.get("gpu", gpu) != gpu for j in todo):
+            raise SystemExit(f"a preset asks for a different gpu than {gpu}")
     built = [(j, *workflow.build(j)) for j in todo]  # fail on a bad job before paying for a GPU
 
+    with runs.marker(out, {"jobs": len(built)}) as record, _session(project, gpu, backend) as call:
+        t0 = time.time()
+        for j, wf, inputs in built:
+            t = time.time()
+            images = call(wf, inputs)
+            dest = out / (datetime.now().strftime("%Y%m%d-%H%M%S") + (f"_{j['tag']}" if j["tag"] else ""))
+            save(dest, j["seed"], images, wf)
+            record(dest)
+            print(f"{len(images)} images in {time.time() - t:.0f}s on {gpu if backend == 'modal' else project.comfy['url']} -> {dest}")
+        print(f"total {time.time() - t0:.0f}s")
+
+
+@contextmanager
+def _session(project: Project, gpu: str, backend: str):
+    """Yields call(workflow, inputs) -> images. A local ComfyUI must already have the models in models.ALL."""
+    if backend == "local":
+        from artgen import comfy
+
+        yield lambda wf, inputs: comfy.run(project.comfy["url"], wf, inputs)
+        return
     import modal
 
     from artgen import remote
 
     runs.guard(project.modal["max_apps"])
-    with runs.marker(out, {"jobs": len(built)}) as record, modal.enable_output(), remote.app.run():
+    with modal.enable_output(), remote.app.run():
         print("models:", remote.fetch_models.remote())
         m = project.modal
-        comfy = remote.ComfyUI.with_options(gpu=gpu, timeout=m["timeout"], scaledown_window=m["scaledown"])()
-        t0 = time.time()
-        for j, wf, inputs in built:
-            t = time.time()
-            images = comfy.run.remote(wf, inputs)
-            dest = out / (datetime.now().strftime("%Y%m%d-%H%M%S") + (f"_{j['tag']}" if j["tag"] else ""))
-            save(dest, j["seed"], images, wf)
-            record(dest)
-            print(f"{len(images)} images in {time.time() - t:.0f}s on {gpu} -> {dest}")
-        print(f"total {time.time() - t0:.0f}s")
+        c = remote.ComfyUI.with_options(gpu=gpu, timeout=m["timeout"], scaledown_window=m["scaledown"])()
+        yield c.run.remote

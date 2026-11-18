@@ -32,7 +32,7 @@ artgen check   # T4 を数秒借りて、使えるか確かめる
 
 | コマンド | すること |
 | --- | --- |
-| `artgen gen` | Modal の ComfyUI で生成する。`--preset <人物>/<名前>`、`--prompt`、まとめて流すなら `--jobs <file.json>`。`--dry-run` で展開したジョブを表示する |
+| `artgen gen` | Modal の ComfyUI で生成する。`--backend local` で手元の ComfyUI でも生成できる。`--preset <人物>/<名前>`、`--prompt`、まとめて流すなら `--jobs <file.json>`。`--dry-run` で展開したジョブを表示する |
 | `artgen wait` | 裏で動かした `gen` が終わるまで待ち、出力先のフォルダを表示する。エージェント向け |
 | `artgen stop` | Modal のアカウントで動いている artgen の App をすべて止める |
 | `artgen underlay <shot.json>` | 撮影指示から深度と OpenPose の下絵を描く（手元の CPU） |
@@ -52,6 +52,10 @@ out = "art/out"            # 生成した画像
 prompts = "art/prompts"    # 採用したプロンプト（_style.toml と <人物>.toml）
 poses = "art/poses"        # 追加のポーズの棚。同梱の棚より先に探す
 
+[comfy]
+backend = "modal"          # "modal" か "local"（自分で起動した ComfyUI）
+url = "http://127.0.0.1:8188"  # 手元の ComfyUI
+
 [modal]
 gpu = "T4"                 # 既定の GPU
 gpus = ["T4", "L4"]        # --gpu やプリセットの gpu で使ってよい GPU
@@ -68,6 +72,17 @@ negative = ""
 ```
 
 `max_apps` は、どのマシン・どの作品から起動した App も数える。上限に達していると、`gen` と `check` は起動しない。`artgen wait` で待つか、`artgen stop` で止める。
+
+### 手元の ComfyUI
+
+`backend = "local"`（または `--backend local`）にすると、`gen` は `url` の ComfyUI にワークフローを送り、Modal の App は使わない。その ComfyUI には、Modal のイメージ（`src/artgen/remote.py`、`src/artgen/models.py`）と同じ custom node とモデルを、次の名前で置いておく。
+
+| `models/` の中のフォルダ | ファイル |
+| --- | --- |
+| `checkpoints` | `NoobAI-XL-v1.1.safetensors` |
+| `ultralytics/bbox` | `face_yolov8m.pt`、`hand_yolov8s.pt`（`sdxl_hires_detailer` のときだけ） |
+| `ipadapter` | `sdxl_models/ip-adapter-plus_sdxl_vit-h.safetensors`、`noob/ip_adapter_Noobtest_800000.bin`（`ref` を使うときだけ） |
+| `clip_vision` | `ipa/models/image_encoder/model.safetensors`（`ref` を使うときだけ） |
 
 ## プリセット
 

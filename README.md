@@ -32,7 +32,7 @@ artgen check   # rent a T4 for a few seconds to confirm access
 
 | Command | What it does |
 | --- | --- |
-| `artgen gen` | Generate with ComfyUI on Modal. `--preset <who>/<name>`, `--prompt`, or `--jobs <file.json>` for many jobs in one session. `--dry-run` prints the expanded jobs |
+| `artgen gen` | Generate with ComfyUI on Modal, or on a local ComfyUI with `--backend local`. `--preset <who>/<name>`, `--prompt`, or `--jobs <file.json>` for many jobs in one session. `--dry-run` prints the expanded jobs |
 | `artgen wait` | Block until `gen` runs started in the background finish, then print their output folders. For agents |
 | `artgen stop` | Stop every artgen app still up on the Modal account |
 | `artgen underlay <shot.json>` | Render depth and OpenPose underlays from a shot (local CPU) |
@@ -52,6 +52,10 @@ out = "art/out"            # generated images
 prompts = "art/prompts"    # adopted presets: _style.toml and <who>.toml
 poses = "art/poses"        # extra pose shelf, searched before the bundled one
 
+[comfy]
+backend = "modal"          # "modal" or "local" (a ComfyUI you already run)
+url = "http://127.0.0.1:8188"  # the local ComfyUI
+
 [modal]
 gpu = "T4"                 # default GPU
 gpus = ["T4", "L4"]        # GPUs allowed with --gpu or a preset's gpu
@@ -68,6 +72,17 @@ negative = ""
 ```
 
 `max_apps` counts apps started from any machine or work. When the limit is reached, `gen` and `check` refuse to start; use `artgen wait` or `artgen stop`.
+
+### Local ComfyUI
+
+With `backend = "local"` (or `--backend local`), `gen` sends the workflows to the ComfyUI at `url` and uses no Modal app. That ComfyUI needs the same custom nodes and models as the Modal image (`src/artgen/remote.py`, `src/artgen/models.py`), under these names:
+
+| Folder in `models/` | File |
+| --- | --- |
+| `checkpoints` | `NoobAI-XL-v1.1.safetensors` |
+| `ultralytics/bbox` | `face_yolov8m.pt`, `hand_yolov8s.pt` (only for `sdxl_hires_detailer`) |
+| `ipadapter` | `sdxl_models/ip-adapter-plus_sdxl_vit-h.safetensors`, `noob/ip_adapter_Noobtest_800000.bin` (only with `ref`) |
+| `clip_vision` | `ipa/models/image_encoder/model.safetensors` (only with `ref`) |
 
 ## Presets
 

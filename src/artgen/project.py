@@ -4,6 +4,10 @@
     prompts = "art/prompts"    # adopted presets: _style.toml and <who>.toml
     poses = "art/poses"        # extra pose shelf, searched before the bundled one
 
+    [comfy]
+    backend = "modal"          # "modal": ComfyUI on a Modal GPU; "local": a ComfyUI already running at url
+    url = "http://127.0.0.1:8188"
+
     [modal]
     gpu = "T4"                 # default GPU
     gpus = ["T4", "L4"]        # GPUs allowed with --gpu or a preset's gpu
@@ -26,8 +30,10 @@ from pathlib import Path
 CONFIG = "artgen.toml"
 MODAL_GPUS = ("T4", "L4", "A10G", "L40S", "A100", "H100")  # what Modal offers; a project narrows it with `gpus`
 MODAL_DEFAULTS = {"gpu": "T4", "gpus": ["T4", "L4"], "max_apps": 1, "timeout": 900, "scaledown": 30}
+COMFY_DEFAULTS = {"backend": "modal", "url": "http://127.0.0.1:8188"}
 GEN_DEFAULTS = {"prompt": "", "negative": "", "seed": 0, "width": 832, "height": 1216, "n": 2, "tag": "", "workflow": "sdxl_txt2img"}
-TOP_KEYS = {"out", "prompts", "poses", "modal", "gen"}
+TOP_KEYS = {"out", "prompts", "poses", "comfy", "modal", "gen"}
+BACKENDS = ("modal", "local")
 
 
 @dataclass(frozen=True)
@@ -36,6 +42,7 @@ class Project:
     out: Path
     prompts: Path
     poses: Path | None
+    comfy: dict = field(default_factory=lambda: dict(COMFY_DEFAULTS))
     modal: dict = field(default_factory=lambda: dict(MODAL_DEFAULTS))
     gen: dict = field(default_factory=lambda: dict(GEN_DEFAULTS))
 
@@ -67,6 +74,9 @@ def load(config: Path | None = None) -> Project:
     c = tomllib.loads(config.read_text(encoding="utf-8")) if config else {}
     if unknown := set(c) - TOP_KEYS:
         raise SystemExit(f"{config}: unknown keys {sorted(unknown)}")
+    comfy = _section(c, "comfy", COMFY_DEFAULTS, config)
+    if comfy["backend"] not in BACKENDS:
+        raise SystemExit(f"{config}: [comfy] backend must be one of {BACKENDS}")
     modal = _section(c, "modal", MODAL_DEFAULTS, config)
     if bad := set(modal["gpus"]) - set(MODAL_GPUS):
         raise SystemExit(f"{config}: unknown GPUs {sorted(bad)}; Modal offers {MODAL_GPUS}")
@@ -75,6 +85,7 @@ def load(config: Path | None = None) -> Project:
         out=root / c.get("out", "out"),
         prompts=root / c.get("prompts", "prompts"),
         poses=root / c["poses"] if "poses" in c else None,
+        comfy=comfy,
         modal=modal,
         gen=_section(c, "gen", GEN_DEFAULTS, config),
     )

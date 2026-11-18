@@ -19,7 +19,7 @@ def cmd_gen(a: argparse.Namespace) -> None:
     if a.dry_run:
         print(json.dumps(todo, ensure_ascii=False, indent=2))
         return
-    gen.run(p, todo, a.gpu or p.modal["gpu"], a.out)
+    gen.run(p, todo, a.gpu or p.modal["gpu"], a.out, a.backend)
 
 
 def cmd_underlay(a: argparse.Namespace) -> None:
@@ -101,6 +101,7 @@ def parser() -> argparse.ArgumentParser:
     g.add_argument("--tag", default="", help="suffix of the output folder name")
     g.add_argument("--workflow")
     g.add_argument("--gpu", choices=project.MODAL_GPUS, help="default: [modal] gpu of artgen.toml")
+    g.add_argument("--backend", choices=project.BACKENDS, help="default: [comfy] backend of artgen.toml")
     g.add_argument("--out", type=Path, help="default: out of artgen.toml")
     g.add_argument("--dry-run", action="store_true", help="print the expanded jobs and stop")
     g.set_defaults(func=cmd_gen)
