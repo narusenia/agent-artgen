@@ -1,0 +1,105 @@
+# Weights the bundled workflows use. A work replaces an entry with a [[model]] of the same key in its
+# artgen.toml, or adds new keys. Workflows refer to a model as "$<key>".
+#
+# key     what workflows and jobs call it
+# folder  ComfyUI model folder type (checkpoints, controlnet, ipadapter, ultralytics_bbox, ...)
+# file    path inside the repo; it is also the name ComfyUI sees, unless `name` is given
+# repo    Hugging Face repo, with an optional `rev` (commit) to pin it
+# url     or a direct https download, with a required `sha256`
+# The Modal volume keeps each file at /models/<folder>/<file>.
+
+[[model]]
+key = "checkpoint"
+folder = "checkpoints"
+repo = "Laxhar/noobai-XL-1.1"
+file = "NoobAI-XL-v1.1.safetensors"
+
+# Face and hand detectors for the FaceDetailer pass in sdxl_hires_detailer
+[[model]]
+key = "detector_face"
+folder = "ultralytics_bbox"
+repo = "Bingsu/adetailer"
+file = "face_yolov8m.pt"
+name = "bbox/face_yolov8m.pt"
+
+[[model]]
+key = "detector_hand"
+folder = "ultralytics_bbox"
+repo = "Bingsu/adetailer"
+file = "hand_yolov8s.pt"
+name = "bbox/hand_yolov8s.pt"
+
+# IP-Adapter (job key ref): the SDXL PLUS model, one trained on NoobAI, and the ViT-H encoder both use
+[[model]]
+key = "ipadapter_plus"
+folder = "ipadapter"
+repo = "h94/IP-Adapter"
+file = "sdxl_models/ip-adapter-plus_sdxl_vit-h.safetensors"
+
+[[model]]
+key = "ipadapter_noob"
+folder = "ipadapter"
+repo = "kataragi/Noob_ipadapter"
+rev = "8e2c039824185add88e917e7dfd350e8188f42b3"
+file = "ip_adapter_Noobtest_800000.bin"
+
+[[model]]
+key = "clip_vision"
+folder = "clip_vision"
+repo = "h94/IP-Adapter"
+file = "models/image_encoder/model.safetensors"
+
+# ControlNets for underlays (job key control): depth trained on depth maps, and NoobAI's own OpenPose
+[[model]]
+key = "controlnet_depth"
+folder = "controlnet"
+repo = "Eugeoter/noob-sdxl-controlnet-depth"
+rev = "e17c9157a48067ab1e52ba22d6143a0ef0f99b21"
+file = "noob_sdxl_controlnet_depth.safetensors"
+
+[[model]]
+key = "controlnet_openpose"
+folder = "controlnet"
+repo = "Laxhar/noob_openpose"
+rev = "bacf43af0132cd5ab9a74cbc95690b38a5c47b53"
+file = "openpose_pre.safetensors"
+
+# Upscaler (job key upscale), 4x, BSD-3, from the official release
+[[model]]
+key = "upscaler"
+folder = "upscale_models"
+url = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth"
+sha256 = "f872d837d3c90ed2e05227bed711af5671a6fd1c9f7d7e91c911a61f155e99da"
+file = "RealESRGAN_x4plus_anime_6B.pth"
+scale = 4
+
+# Background removal (job key rembg), MIT
+[[model]]
+key = "birefnet"
+folder = "background_removal"
+repo = "Comfy-Org/BiRefNet"
+rev = "884af709e9b795d89dafbf97f29c8d6a2386f5c6"
+file = "background_removal/birefnet.safetensors"
+
+# P-H3-Image (MiniMax-H3 based) for the ph3_edit workflow: the smallest set, w4a8 with the int8 VAE.
+# MiniMax-H3 community license. About 20 GB; peaks near 21 GB of VRAM at 8 MP.
+[[model]]
+key = "ph3_model"
+folder = "diffusion_models"
+repo = "PrunaAI/P-H3-Image-Comfy"
+rev = "44a0fb73f299da1bb715bdb5ff59ce3fd3c6f543"
+file = "diffusion_models/p-h3-image_w4a8.safetensors"
+
+[[model]]
+key = "ph3_text_encoder"
+folder = "text_encoders"
+repo = "PrunaAI/P-H3-Image-Comfy"
+rev = "44a0fb73f299da1bb715bdb5ff59ce3fd3c6f543"
+file = "text_encoders/p-h3-image_text_encoder_w4a8.safetensors"
+
+[[model]]
+key = "ph3_vae"
+folder = "vae"
+repo = "PrunaAI/P-H3-Image-Comfy"
+rev = "44a0fb73f299da1bb715bdb5ff59ce3fd3c6f543"
+file = "vae/p-h3-image_vae_int8_convrot.safetensors"

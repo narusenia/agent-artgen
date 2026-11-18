@@ -12,7 +12,7 @@ from pathlib import Path
 
 import modal
 
-from artgen import comfy, models
+from artgen import comfy
 
 COMFY_DIR = "/root/comfy/ComfyUI"
 VOLUME = "/models"
@@ -21,14 +21,14 @@ PORT = 8188
 TORCH = "torch==2.14.1 torchvision==0.29.1"
 CU130 = "https://download.pytorch.org/whl/cu130"
 
-# Weights go on the volume once and are symlinked into ComfyUI's model folders at start.
+# Weights go on the volume once, at /models/<ComfyUI folder type>/<file>; ComfyUI reads them through extra_model_paths.yaml.
 vol = modal.Volume.from_name("artgen-models", create_if_missing=True)
 
 # Building needs no GPU. comfy-cli cannot find old releases, so ComfyUI is installed with git and pip.
 comfy_image = (
     # debian_slim resolves to bullseye on the workspace's image builder version and its security repo 404s
     modal.Image.from_registry("python:3.11-slim-bookworm")
-    .apt_install("git", "libgl1", "libglib2.0-0")
+    .apt_install("git", "libgl1", "libglib2.0-0", "gcc")  # gcc: Triton builds the int8 kernels at run time
     .run_commands(f"git clone --depth 1 --branch v0.45.6 https://github.com/comfyanonymous/ComfyUI {COMFY_DIR}")
     .pip_install(*TORCH.split(), index_url=CU130)
     .run_commands(f"pip install -r {COMFY_DIR}/requirements.txt")
@@ -50,14 +50,24 @@ dl_image = modal.Image.debian_slim(python_version="3.11").uv_pip_install("huggin
 app = modal.App("artgen")
 
 
-@app.function(image=dl_image, volumes={VOLUME: vol}, timeout=1200, max_containers=1)
-def fetch_models() -> str:
-    """Downloads missing weights to the volume on a CPU."""
+@app.function(image=dl_image, volumes={VOLUME: vol}, timeout=1800, max_containers=1)
+def fetch_models(wanted: list[dict]) -> str:
+    """Downloads the missing ones of `wanted` (models.toml entries) to /models/<folder>/<file> on a CPU."""
+    import hashlib
+
     from huggingface_hub import hf_hub_download
 
-    missing = [m for m in models.ALL if not Path(VOLUME, m[2], m[1]).exists()]
-    for repo, file, sub, rev in missing:
-        hf_hub_download(repo, file, local_dir=f"{VOLUME}/{sub}", revision=rev)
+    missing = [m for m in wanted if not Path(VOLUME, m["folder"], m["file"]).exists()]
+    for m in missing:
+        dest = Path(VOLUME, m["folder"], m["file"])
+        if m.get("url"):
+            data = urllib.request.urlopen(m["url"]).read()
+            if hashlib.sha256(data).hexdigest() != m["sha256"]:
+                raise RuntimeError(f"sha256 mismatch for {m['url']}")
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(data)
+        else:
+            hf_hub_download(m["repo"], m["file"], local_dir=f"{VOLUME}/{m['folder']}", revision=m.get("rev"))
     if missing:
         vol.commit()
     return f"downloaded {len(missing)}" if missing else "cached"
@@ -72,11 +82,10 @@ def gpu_info() -> str:
 class ComfyUI:
     @modal.enter()
     def start(self):
-        m = Path(COMFY_DIR, "models")
-        Path(m, "checkpoints", models.CHECKPOINT[1]).symlink_to(Path(VOLUME, models.CHECKPOINT[1]))
-        Path(m, "ultralytics").symlink_to(Path(VOLUME, "ultralytics"))
-        Path(m, "ipadapter").symlink_to(Path(VOLUME, "ipadapter"))
-        Path(m, "clip_vision", "ipa").symlink_to(Path(VOLUME, "clip_vision"))
+        # Every folder on the volume is a ComfyUI model folder type (checkpoints, controlnet, ipadapter, ...)
+        folders = sorted(d.name for d in Path(VOLUME).iterdir() if d.is_dir())
+        Path(COMFY_DIR, "extra_model_paths.yaml").write_text(
+            f"artgen:\n  base_path: {VOLUME}\n" + "".join(f"  {f}: {f}\n" for f in folders))
         subprocess.Popen(["python", "main.py", "--port", str(PORT)], cwd=COMFY_DIR)
         for _ in range(120):
             try:

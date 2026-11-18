@@ -32,7 +32,7 @@ MODAL_GPUS = ("T4", "L4", "A10G", "L40S", "A100", "H100")  # what Modal offers; 
 MODAL_DEFAULTS = {"gpu": "T4", "gpus": ["T4", "L4"], "max_apps": 1, "timeout": 900, "scaledown": 30}
 COMFY_DEFAULTS = {"backend": "modal", "url": "http://127.0.0.1:8188"}
 GEN_DEFAULTS = {"prompt": "", "negative": "", "seed": 0, "width": 832, "height": 1216, "n": 2, "tag": "", "workflow": "sdxl_txt2img"}
-TOP_KEYS = {"out", "prompts", "poses", "comfy", "modal", "gen"}
+TOP_KEYS = {"out", "prompts", "poses", "comfy", "modal", "gen", "model"}
 BACKENDS = ("modal", "local")
 
 
@@ -45,6 +45,7 @@ class Project:
     comfy: dict = field(default_factory=lambda: dict(COMFY_DEFAULTS))
     modal: dict = field(default_factory=lambda: dict(MODAL_DEFAULTS))
     gen: dict = field(default_factory=lambda: dict(GEN_DEFAULTS))
+    models: list = field(default_factory=list)  # [[model]] entries; see models.toml
 
     def resolve(self, p: str | Path) -> Path:
         return (self.root / p).resolve()
@@ -88,6 +89,7 @@ def load(config: Path | None = None) -> Project:
         comfy=comfy,
         modal=modal,
         gen=_section(c, "gen", GEN_DEFAULTS, config),
+        models=c.get("model", []),
     )
     p.check_gpu(modal["gpu"])
     return p

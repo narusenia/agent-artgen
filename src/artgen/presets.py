@@ -6,7 +6,8 @@ from artgen.project import Project
 
 # Keys copied from a preset into a job as they are.
 JOB_KEYS = ("width", "height", "steps", "cfg", "sampler", "workflow", "gpu",
-            "ref_model", "ref_weight", "ref_end_at", "ref_weight_type", "ref_embeds_scaling", "ref_hires")
+            "ref_model", "ref_weight", "ref_end_at", "ref_weight_type", "ref_embeds_scaling", "ref_hires",
+            "denoise", "upscale", "rembg", "megapixels")
 
 
 def load(project: Project, spec: str) -> list[dict]:
@@ -32,8 +33,12 @@ def load(project: Project, spec: str) -> list[dict]:
                 raise SystemExit(f"replace target not found: {old}")
             s = s.replace(old, new)
         job["prompt" if k == "positive" else k] = s
-    for k in ("ref", "ref_mask"):
+    for k in ("ref", "ref_mask", "image", "mask"):
         if k in p:
             job[k] = str(project.resolve(p[k]))
+    if "images" in p:
+        job["images"] = [str(project.resolve(i)) for i in p["images"]]
+    if "control" in p:
+        job["control"] = [c | {"image": str(project.resolve(c["image"]))} for c in p["control"]]
     job["tag"] = f"{who}_{name}"
     return [job | {"seed": s} for s in p.get("seeds", [0])]

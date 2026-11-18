@@ -24,6 +24,8 @@ artgen wait --timeout 1800                  # blocks, then prints the output fol
 ```
 
 - Many pictures: write a jobs file (`[{"preset": "...", "seed": 1}, {"prompt": "...", "tag": "..."}]`) and pass `--jobs`; one Modal session runs them all.
+- Job keys beyond the prompt: `image` + `denoise` (img2img), `mask` (inpaint), `control` (underlays from `artgen underlay`), `upscale`, `rembg`. `--workflow post --image x.png --upscale 2 --rembg` only post-processes. Samples: `examples/` in the artgen repo.
+- Models come from the bundled `models.toml`; the work swaps one with a `[[model]]` of the same key in `artgen.toml`.
 - Each output folder holds `<seed>_<i>.png` and the `workflow.json` that made them.
 - Only `[modal] max_apps` apps may be up at once (default 1). If `gen` refuses to start, another run is still going: `artgen wait`. If a run was interrupted and an app is left up, `artgen stop`.
 

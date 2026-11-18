@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from artgen import presets, runs, workflow
+from artgen import models, presets, runs, workflow
 from artgen.project import Project
 
 
@@ -24,7 +24,7 @@ def plan(project: Project, base: dict, job: dict, jobs_file: Path | None = None)
     """Jobs from a JSON list file, or the single job given on the command line."""
     jobs = json.loads(jobs_file.read_text()) if jobs_file else [job]
     todo = [x for j in jobs for x in expand(project, base, j)]
-    if not all(j["prompt"] for j in todo):
+    if not all(j["prompt"] or j["workflow"] == "post" for j in todo):
         raise SystemExit("prompt is required (give --prompt, --preset or --jobs)")
     return todo
 
@@ -48,9 +48,11 @@ def run(project: Project, todo: list[dict], gpu: str, out: Path | None = None, b
         project.check_gpu(gpu)
         if any(j.get("gpu", gpu) != gpu for j in todo):
             raise SystemExit(f"a preset asks for a different gpu than {gpu}")
-    built = [(j, *workflow.build(j)) for j in todo]  # fail on a bad job before paying for a GPU
+    cat = models.catalog(project.models, str(project.root / "artgen.toml"))
+    built = [(j, *workflow.build(j, cat)) for j in todo]  # fail on a bad job before paying for a GPU
 
-    with runs.marker(out, {"jobs": len(built)}) as record, _session(project, gpu, backend) as call:
+    wanted = list({m["key"]: m for _, wf, _ in built for m in models.resolve(wf, cat)}.values())
+    with runs.marker(out, {"jobs": len(built)}) as record, _session(project, gpu, backend, wanted) as call:
         t0 = time.time()
         for j, wf, inputs in built:
             t = time.time()
@@ -63,8 +65,8 @@ def run(project: Project, todo: list[dict], gpu: str, out: Path | None = None, b
 
 
 @contextmanager
-def _session(project: Project, gpu: str, backend: str):
-    """Yields call(workflow, inputs) -> images. A local ComfyUI must already have the models in models.ALL."""
+def _session(project: Project, gpu: str, backend: str, wanted: list[dict]):
+    """Yields call(workflow, inputs) -> images. A local ComfyUI must already have the `wanted` models."""
     if backend == "local":
         from artgen import comfy
 
@@ -76,7 +78,7 @@ def _session(project: Project, gpu: str, backend: str):
 
     runs.guard(project.modal["max_apps"])
     with modal.enable_output(), remote.app.run():
-        print("models:", remote.fetch_models.remote())
+        print("models:", remote.fetch_models.remote(wanted))
         m = project.modal
         c = remote.ComfyUI.with_options(gpu=gpu, timeout=m["timeout"], scaledown_window=m["scaledown"])()
         yield c.run.remote

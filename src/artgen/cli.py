@@ -12,7 +12,9 @@ from artgen import gen, project
 
 def cmd_gen(a: argparse.Namespace) -> None:
     p = project.load()
-    base = p.gen | {k: v for k in ("prompt", "negative", "width", "height", "n", "workflow") if (v := getattr(a, k)) is not None}
+    keys = ("prompt", "negative", "width", "height", "n", "workflow", "image", "mask", "denoise", "upscale")
+    base = p.gen | {k: v for k in keys if (v := getattr(a, k)) is not None} | ({"rembg": True} if a.rembg else {})
+    base |= {k: str(Path(base[k]).resolve()) for k in ("image", "mask") if k in base}
     # On the command line a non-zero seed and a tag win over the preset.
     job = ({"preset": a.preset} if a.preset else {}) | ({"seed": a.seed} if a.seed else {}) | ({"tag": a.tag} if a.tag else {})
     todo = gen.plan(p, base, job, a.jobs)
@@ -20,6 +22,17 @@ def cmd_gen(a: argparse.Namespace) -> None:
         print(json.dumps(todo, ensure_ascii=False, indent=2))
         return
     gen.run(p, todo, a.gpu or p.modal["gpu"], a.out, a.backend)
+
+
+def cmd_edit(a: argparse.Namespace) -> None:
+    p = project.load()
+    job = p.gen | {"workflow": "ph3_edit", "prompt": a.instruction, "image": str(a.image.resolve()), "seed": a.seed, "tag": a.tag,
+                   "images": [str(i.resolve()) for i in a.images], "megapixels": a.megapixels}
+    job |= {k: v for k in ("upscale",) if (v := getattr(a, k)) is not None} | ({"rembg": True} if a.rembg else {})
+    if a.dry_run:
+        print(json.dumps(job, ensure_ascii=False, indent=2))
+        return
+    gen.run(p, [job], a.gpu or p.modal["gpu"], a.out, a.backend)
 
 
 def cmd_underlay(a: argparse.Namespace) -> None:
@@ -99,12 +112,32 @@ def parser() -> argparse.ArgumentParser:
     g.add_argument("--height", type=int)
     g.add_argument("--n", type=int, help="images per job")
     g.add_argument("--tag", default="", help="suffix of the output folder name")
-    g.add_argument("--workflow")
+    g.add_argument("--workflow", help="sdxl_txt2img, sdxl_hires_detailer, or post (only --upscale / --rembg on --image)")
+    g.add_argument("--image", help="img2img source (redrawn at --denoise), or the picture for post")
+    g.add_argument("--mask", help="inpaint mask for --image; white is repainted")
+    g.add_argument("--denoise", type=float, help="default 0.55, or 0.9 with --mask")
+    g.add_argument("--upscale", type=float, help="enlarge the result by this factor with the upscaler model")
+    g.add_argument("--rembg", action="store_true", help="remove the background (transparent PNG)")
     g.add_argument("--gpu", choices=project.MODAL_GPUS, help="default: [modal] gpu of artgen.toml")
     g.add_argument("--backend", choices=project.BACKENDS, help="default: [comfy] backend of artgen.toml")
     g.add_argument("--out", type=Path, help="default: out of artgen.toml")
     g.add_argument("--dry-run", action="store_true", help="print the expanded jobs and stop")
     g.set_defaults(func=cmd_gen)
+
+    e = sub.add_parser("edit", help="edit a picture by an instruction with P-H3-Image")
+    e.add_argument("image", type=Path)
+    e.add_argument("instruction", help="what to change; other pictures are <Picture 2>, <Picture 3>, ...")
+    e.add_argument("--images", type=Path, nargs="*", default=[], help="pictures the instruction refers to")
+    e.add_argument("--megapixels", type=float, default=4.0, help="size of the edit (default 4)")
+    e.add_argument("--seed", type=int, default=0)
+    e.add_argument("--tag", default="edit")
+    e.add_argument("--upscale", type=float)
+    e.add_argument("--rembg", action="store_true")
+    e.add_argument("--gpu", choices=project.MODAL_GPUS)
+    e.add_argument("--backend", choices=project.BACKENDS)
+    e.add_argument("--out", type=Path)
+    e.add_argument("--dry-run", action="store_true")
+    e.set_defaults(func=cmd_edit)
 
     u = sub.add_parser("underlay", help="render depth and OpenPose underlays from a shot JSON (local CPU)")
     u.add_argument("shot", type=Path)

@@ -1,16 +1,46 @@
-"""Weights kept on the Modal volume: (repo, file, subdirectory of the volume, revision)."""
+"""Model weights: the bundled models.toml, overridden by the work's [[model]] entries.
 
-CHECKPOINT = ("Laxhar/noobai-XL-1.1", "NoobAI-XL-v1.1.safetensors", "", None)
-# Face and hand detectors for the FaceDetailer pass in sdxl_hires_detailer.json.
-DETECTORS = [("Bingsu/adetailer", f, "ultralytics/bbox", None) for f in ("face_yolov8m.pt", "hand_yolov8s.pt")]
-# IP-Adapter: the SDXL PLUS model and the ViT-H image encoder it pairs with.
-IPA_PLUS = ("h94/IP-Adapter", "sdxl_models/ip-adapter-plus_sdxl_vit-h.safetensors", "ipadapter", None)
-CLIP_VISION = ("h94/IP-Adapter", "models/image_encoder/model.safetensors", "clip_vision", None)
-# IP-Adapter trained on NoobAI (kataragi, runs with ViT-H), pinned to a commit.
-IPA_NOOB = ("kataragi/Noob_ipadapter", "ip_adapter_Noobtest_800000.bin", "ipadapter/noob", "8e2c039824185add88e917e7dfd350e8188f42b3")
+Workflows name a model as "$<key>"; `resolve` swaps in the name ComfyUI sees and reports what a run must download.
+Standard library only: the containers import this module.
+"""
 
-ALL = [CHECKPOINT, *DETECTORS, IPA_PLUS, CLIP_VISION, IPA_NOOB]
+import tomllib
+from importlib.resources import files
 
-# Names as ComfyUI sees them, chosen by a job's ref_model.
-IPA_MODELS = {"plus": IPA_PLUS[1], "noob": f"noob/{IPA_NOOB[1]}"}
-CLIP_VISION_NAME = f"ipa/{CLIP_VISION[1]}"
+FIELDS = {"key", "folder", "file", "name", "repo", "rev", "url", "sha256", "scale"}
+
+
+def _check(m: dict, where: str) -> dict:
+    if unknown := set(m) - FIELDS:
+        raise SystemExit(f"{where}: unknown keys in [[model]] {m.get('key')!r}: {sorted(unknown)}")
+    if missing := {"key", "folder", "file"} - set(m):
+        raise SystemExit(f"{where}: [[model]] {m.get('key')!r} needs {sorted(missing)}")
+    if bool(m.get("repo")) == bool(m.get("url")):
+        raise SystemExit(f"{where}: [[model]] {m['key']!r} needs exactly one of repo and url")
+    if m.get("url") and not m.get("sha256"):
+        raise SystemExit(f"{where}: [[model]] {m['key']!r} with a url needs sha256")
+    return m
+
+
+def catalog(overrides: list[dict] | None = None, where: str = "artgen.toml") -> dict[str, dict]:
+    """key -> model entry. A work's entry replaces the bundled one with the same key."""
+    bundled = tomllib.loads(files("artgen").joinpath("models.toml").read_text())["model"]
+    out = {m["key"]: _check(m, "models.toml") for m in bundled}
+    return out | {m.get("key"): _check(m, where) for m in overrides or []}
+
+
+def name(m: dict) -> str:
+    return m.get("name", m["file"])
+
+
+def resolve(workflow: dict, cat: dict[str, dict]) -> list[dict]:
+    """Replaces every "$key" input in place with the model's ComfyUI name; returns the models used."""
+    used = {}
+    for node in workflow.values():
+        for k, v in node["inputs"].items():
+            if isinstance(v, str) and v.startswith("$"):
+                if v[1:] not in cat:
+                    raise SystemExit(f"workflow refers to unknown model {v}; declare it with [[model]]")
+                used[v[1:]] = cat[v[1:]]
+                node["inputs"][k] = name(cat[v[1:]])
+    return list(used.values())

@@ -7,17 +7,20 @@ Top to bottom. Mark done items with [x] and the date.
 - [x] Upgrade ComfyUI to v0.44 or later (needed for P-H3-Image) and re-pin the custom nodes (2026-11-18: v0.45.6, torch 2.14.1 cu130, Impact-Pack 8.31, Subpack 1.3.4; T4 test run passed)
 - [ ] Bump the Modal image builder version in the workspace settings so debian_slim (and Python 3.12) build again
 - [ ] Styles: `styles/<name>.toml` (e.g. `anime-cel`, `lightnovel`) selectable from a preset or `[gen]`, so the painting style is not fixed per work
-- [ ] Models and LoRAs declared by the work (`[[model]]`, `[[lora]]` with source, strength, trigger words) and placed on the volume on first use
+- [x] Models declared by the work (`[[model]]`, bundled list in `models.toml`) and placed on the volume on first use (2026-11-18)
+- [ ] LoRAs declared by the work (`[[lora]]` with source, strength, trigger words)
 - [ ] Compare generation models (Illustrious / NoobAI family, Krea 2, FLUX.2 klein) on the same character
 
 ## Workflows
 
-- [ ] `img2img`: redraw a given image at a chosen denoise
-- [ ] `underlay`: depth and OpenPose underlays through ControlNet
-- [ ] `inpaint`: repaint a masked area
-- [ ] `edit`: instruction-based edit with P-H3-Image (quantized: Pruna INT8 or GGUF via ComfyUI-GGUF); `artgen edit <image> "instruction"`. Try T4 first, L4 if it does not fit
-- [ ] `rembg`: background removal (BiRefNet) to a transparent PNG
-- [ ] `upscale`: model upscale for final candidates
+- [x] `img2img`: redraw a given image at a chosen denoise (2026-11-18, job keys `image`, `denoise`)
+- [x] `underlay`: depth and OpenPose underlays through ControlNet (2026-11-18, job key `control`)
+- [x] `inpaint`: repaint a masked area (2026-11-18, job key `mask`)
+- [x] `edit`: instruction-based edit with P-H3-Image, `artgen edit <image> "instruction"` (2026-11-18: w4a8 set, no prompt upsampler; T4 at 1 MP in 211 s)
+- [ ] `edit`: try 4 MP on T4 and L4, and the prompt upsampler (another 10–19 GB)
+- [ ] Find the `KeyError: 'default'` (configparser) printed at ComfyUI start; generation is not affected
+- [x] `rembg`: background removal (BiRefNet) to a transparent PNG (2026-11-18)
+- [x] `upscale`: model upscale for final candidates (2026-11-18, RealESRGAN x4plus anime 6B)
 
 ## Underlays (Blender)
 
