@@ -1,0 +1,41 @@
+# Sample artgen.toml with every key. Copy it to the root of a work and delete what you do not need;
+# every key is optional. Paths are relative to this file.
+
+out = "art/out"            # generated images
+prompts = "art/prompts"    # adopted presets: _style.toml and <who>.toml
+poses = "art/poses"        # extra pose shelf, searched before the bundled one
+
+[comfy]
+backend = "modal"          # "modal": ComfyUI on a Modal GPU; "local": a ComfyUI already running at url
+url = "http://127.0.0.1:8188"
+
+[modal]
+gpu = "T4"                 # default GPU
+gpus = ["T4", "L4"]        # GPUs allowed with --gpu or a preset's gpu
+max_apps = 1               # artgen apps allowed up at once on the Modal account
+timeout = 900              # seconds per ComfyUI container
+scaledown = 30             # seconds an idle container stays up
+
+[gen]                      # defaults for `artgen gen`; the command line wins
+workflow = "sdxl_txt2img"  # sdxl_txt2img, sdxl_hires_detailer or post
+width = 832
+height = 1216
+n = 2
+negative = ""
+
+# Models: replace a bundled entry by its key (see src/artgen/models.toml for the keys), or add new ones.
+# Use a different checkpoint:
+[[model]]
+key = "checkpoint"
+folder = "checkpoints"
+repo = "OnomaAIResearch/Illustrious-XL-v2.0"
+file = "Illustrious-XL-v2.0.safetensors"
+
+# A file from any https URL needs its sha256:
+# [[model]]
+# key = "upscaler"
+# folder = "upscale_models"
+# url = "https://example.com/4x-model.pth"
+# sha256 = "<sha256 of the file>"
+# file = "4x-model.pth"
+# scale = 4

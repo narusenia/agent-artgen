@@ -1,0 +1,9 @@
+{
+  "id": "hero_stance",
+  "note": "The hero stands with a sword raised. Strong low angle and tilt, full body",
+  "size": [832, 1216],
+  "camera": { "mood": "dynamic", "shot": "full", "lens": 28, "pitch": 22, "yaw": 25, "roll": 10 },
+  "figures": [
+    { "name": "hero", "pose": "sword_guard", "position": [0, 0], "facing": -20, "height": 1.55, "hold": "sword" }
+  ]
+}

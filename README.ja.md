@@ -33,6 +33,7 @@ artgen check   # T4 を数秒借りて、使えるか確かめる
 | コマンド | すること |
 | --- | --- |
 | `artgen gen` | Modal の ComfyUI で生成する。`--backend local` で手元の ComfyUI でも生成できる。`--preset <人物>/<名前>`、`--prompt`、まとめて流すなら `--jobs <file.json>`。`--dry-run` で展開したジョブを表示する |
+| `artgen edit <画像> "<指示>"` | P-H3-Image（`ph3_edit`）で、指示どおりに画像を直す。`--images` で、指示の中で `<Picture 2>` … と呼ぶ画像を足す。初回に約 20GB の重みを取得する。T4 で `--megapixels 1` なら約 3 分半 |
 | `artgen wait` | 裏で動かした `gen` が終わるまで待ち、出力先のフォルダを表示する。エージェント向け |
 | `artgen stop` | Modal のアカウントで動いている artgen の App をすべて止める |
 | `artgen underlay <shot.json>` | 撮影指示から深度と OpenPose の下絵を描く（手元の CPU） |
@@ -75,14 +76,42 @@ negative = ""
 
 ### 手元の ComfyUI
 
-`backend = "local"`（または `--backend local`）にすると、`gen` は `url` の ComfyUI にワークフローを送り、Modal の App は使わない。その ComfyUI には、Modal のイメージ（`src/artgen/remote.py`、`src/artgen/models.py`）と同じ custom node とモデルを、次の名前で置いておく。
+`backend = "local"`（または `--backend local`）にすると、`gen` は `url` の ComfyUI にワークフローを送り、Modal の App は使わない。その ComfyUI には、Modal のイメージ（`src/artgen/remote.py`）と同じ custom node と、使うモデルを下のモデル一覧の名前で置いておく。
 
-| `models/` の中のフォルダ | ファイル |
+### モデル
+
+同梱のモデル一覧は [src/artgen/models.toml](src/artgen/models.toml)。ワークフローはモデルをキー（`$checkpoint`）で参照するので、作品の `artgen.toml` に同じキーの `[[model]]` を書けば差し替えられる。新しいキーも足せる。
+
+```toml
+[[model]]
+key = "checkpoint"                       # 同梱の checkpoint を差し替える
+folder = "checkpoints"                   # ComfyUI のモデルフォルダの種類
+repo = "OnomaAIResearch/Illustrious-XL-v2.0"
+file = "Illustrious-XL-v2.0.safetensors"
+# rev = "<commit>"                       # 版の固定。url = "https://…" と sha256 = "…" でも書ける
+```
+
+Modal では、実行ごとにワークフローが使うモデルだけを、`artgen-models` の volume の `/models/<folder>/<file>` に一度だけ取得する。
+
+## ジョブのキー
+
+ジョブ（`--jobs`、プリセット、コマンド）には、プロンプト・大きさ・シードのほかに次のキーを書ける。
+
+| キー | すること |
 | --- | --- |
-| `checkpoints` | `NoobAI-XL-v1.1.safetensors` |
-| `ultralytics/bbox` | `face_yolov8m.pt`、`hand_yolov8s.pt`（`sdxl_hires_detailer` のときだけ） |
-| `ipadapter` | `sdxl_models/ip-adapter-plus_sdxl_vit-h.safetensors`、`noob/ip_adapter_Noobtest_800000.bin`（`ref` を使うときだけ） |
-| `clip_vision` | `ipa/models/image_encoder/model.safetensors`（`ref` を使うときだけ） |
+| `ref`、`ref_*` | IP-Adapter の参照画像 |
+| `image`、`denoise` | img2img。`image` を `denoise`（既定 0.55）で描き直す |
+| `mask` | `image` の中を塗り直す（inpaint）。白い所を描き直す（`denoise` の既定は 0.9） |
+| `control` | 下絵。`[{image, type = "depth" \| "openpose", strength, start_at, end_at}]` |
+| `upscale` | アップスケーラーで、この倍率に大きくする |
+| `rembg` | 背景を抜いて透過 PNG にする |
+| `images`、`megapixels` | `ph3_edit` だけ。追加の画像と、直す大きさ（既定 4 メガピクセル） |
+
+`post` ワークフローは `image` を読んで `upscale` と `rembg` だけをかける。例: `artgen gen --workflow post --image a.png --upscale 2 --rembg`
+
+## サンプル
+
+[examples/](examples/) に、`artgen.toml`、`prompts/_style.toml`、`prompts/<人物>.toml`、ジョブファイル、撮影指示、設定画のサンプルを置いた。
 
 ## プリセット
 

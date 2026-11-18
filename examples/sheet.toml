@@ -1,0 +1,31 @@
+# Sample character sheet for `artgen sheet`. Format: docs/sheets.md. Paths are relative to this file.
+
+[canvas]
+size = [2400, 1400]
+font = "sans"
+
+[title]
+name = "ミア"
+ruby = "みあ"
+subtitle = "Mia"
+
+[[image]]
+path = "../art/out/20261118-120000_mia_stance/1234_0.png"
+pos = [64, 200]
+width = 760
+
+[[note]]
+text = "銀の徽章"
+at = [420, 520]
+label = [900, 480]
+
+[table]
+pos = [1500, 200]
+width = 800
+heading = "設定"
+items = [["年齢", "17"], ["身長", "155cm"]]
+
+[palette]
+pos = [1500, 700]
+heading = "配色"
+colors = [["#3a4566", "紺（上着）"], ["#c0c0c8", "銀（徽章）"]]

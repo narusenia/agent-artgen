@@ -1,0 +1,35 @@
+# One [[preset]] per adopted picture of this character. Run with `artgen gen --preset mia/<name>`.
+
+[[preset]]
+name = "stance"
+uses = ["uniform.female"]
+positive = "1girl, solo, standing, full body, simple background"
+negative = "multiple girls"
+seeds = [1234, 5678]
+width = 832
+height = 1216
+workflow = "sdxl_hires_detailer"
+ref = "art/refs/uniform.png"      # optional IP-Adapter reference
+ref_model = "noob"                # plus (default) or noob
+ref_weight = 0.6
+note = "adopted 2026-11-18 from 20261118-120000_mia_stance"
+
+[[preset]]
+name = "stance_underlay"
+uses = ["uniform.female"]
+positive = "1girl, solo, standing, holding sword"
+seeds = [42]
+control = [                        # underlays from `artgen underlay`
+  { image = "art/out/underlay/stance_depth.png", type = "depth", strength = 0.7, end_at = 0.8 },
+  { image = "art/out/underlay/stance_openpose.png", type = "openpose", strength = 0.6 },
+]
+
+[[preset]]
+name = "face_fix"
+positive = "1girl, smile"
+seeds = [7]
+image = "art/out/20261118-120000_mia_stance/1234_0.png"   # img2img source
+mask = "art/masks/face.png"       # inpaint: white is repainted
+denoise = 0.8
+upscale = 2                       # enlarge the result
+rembg = true                      # transparent background

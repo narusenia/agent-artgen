@@ -1,0 +1,5 @@
+[
+  {"preset": "mia/stance", "seed": 99},
+  {"prompt": "1girl, sitting, chair", "tag": "sitting", "n": 2},
+  {"workflow": "post", "image": "art/out/20261118-120000_mia_stance/1234_0.png", "upscale": 2, "rembg": true, "tag": "cutout"}
+]

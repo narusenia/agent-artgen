@@ -33,6 +33,7 @@ artgen check   # rent a T4 for a few seconds to confirm access
 | Command | What it does |
 | --- | --- |
 | `artgen gen` | Generate with ComfyUI on Modal, or on a local ComfyUI with `--backend local`. `--preset <who>/<name>`, `--prompt`, or `--jobs <file.json>` for many jobs in one session. `--dry-run` prints the expanded jobs |
+| `artgen edit <image> "<instruction>"` | Edit a picture by an instruction with P-H3-Image (`ph3_edit`). `--images` adds pictures the instruction calls `<Picture 2>`, … Downloads about 20 GB of weights once. On a T4, `--megapixels 1` takes about 3.5 minutes |
 | `artgen wait` | Block until `gen` runs started in the background finish, then print their output folders. For agents |
 | `artgen stop` | Stop every artgen app still up on the Modal account |
 | `artgen underlay <shot.json>` | Render depth and OpenPose underlays from a shot (local CPU) |
@@ -75,14 +76,42 @@ negative = ""
 
 ### Local ComfyUI
 
-With `backend = "local"` (or `--backend local`), `gen` sends the workflows to the ComfyUI at `url` and uses no Modal app. That ComfyUI needs the same custom nodes and models as the Modal image (`src/artgen/remote.py`, `src/artgen/models.py`), under these names:
+With `backend = "local"` (or `--backend local`), `gen` sends the workflows to the ComfyUI at `url` and uses no Modal app. That ComfyUI needs the custom nodes of the Modal image (`src/artgen/remote.py`) and, in its model folders, the files the run uses under the names in the model list below.
 
-| Folder in `models/` | File |
+### Models
+
+The bundled model list is [src/artgen/models.toml](src/artgen/models.toml). Workflows refer to a model by key (`$checkpoint`), so a work changes a model, or adds one, with a `[[model]]` of that key in its `artgen.toml`:
+
+```toml
+[[model]]
+key = "checkpoint"                       # replaces the bundled checkpoint
+folder = "checkpoints"                   # ComfyUI model folder type
+repo = "OnomaAIResearch/Illustrious-XL-v2.0"
+file = "Illustrious-XL-v2.0.safetensors"
+# rev = "<commit>"                       # pin; or url = "https://…" with sha256 = "…"
+```
+
+On Modal, each run downloads only the models its workflows use, once, to `/models/<folder>/<file>` on the `artgen-models` volume.
+
+## Job keys
+
+A job (from `--jobs`, a preset or the command line) takes these keys besides the prompt, size and seed:
+
+| Key | What it does |
 | --- | --- |
-| `checkpoints` | `NoobAI-XL-v1.1.safetensors` |
-| `ultralytics/bbox` | `face_yolov8m.pt`, `hand_yolov8s.pt` (only for `sdxl_hires_detailer`) |
-| `ipadapter` | `sdxl_models/ip-adapter-plus_sdxl_vit-h.safetensors`, `noob/ip_adapter_Noobtest_800000.bin` (only with `ref`) |
-| `clip_vision` | `ipa/models/image_encoder/model.safetensors` (only with `ref`) |
+| `ref`, `ref_*` | IP-Adapter reference image |
+| `image`, `denoise` | img2img: redraw `image` at `denoise` (default 0.55) |
+| `mask` | Inpaint inside `image`; white is repainted (`denoise` default 0.9) |
+| `control` | Underlays: `[{image, type = "depth" \| "openpose", strength, start_at, end_at}]` |
+| `upscale` | Enlarge the result by this factor with the upscaler model |
+| `rembg` | Remove the background (transparent PNG) |
+| `images`, `megapixels` | `ph3_edit` only: extra pictures, and the size of the edit (default 4) |
+
+The `post` workflow only loads `image` and applies `upscale` and `rembg`: `artgen gen --workflow post --image a.png --upscale 2 --rembg`.
+
+## Examples
+
+[examples/](examples/) has a sample of every file: `artgen.toml`, `prompts/_style.toml`, `prompts/<who>.toml`, a jobs file, a shot and a sheet.
 
 ## Presets
 

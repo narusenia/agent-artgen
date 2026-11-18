@@ -1,0 +1,6 @@
+# Shared by every character. A preset joins `style`, then the tables named in its `uses`, then its own text.
+style = { positive = "masterpiece, best quality, anime coloring", negative = "lowres, bad anatomy, bad hands, text, watermark" }
+
+[uniform]
+female = { positive = "navy blazer, pleated skirt" }
+male = { positive = "navy blazer, slacks" }
