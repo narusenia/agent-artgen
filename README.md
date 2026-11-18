@@ -1,126 +1,110 @@
 # artgen
 
-小説の設定画と、口絵・挿絵の構図の参照を作る画像パイプライン。作品に依らない。出力は作者個人の参照用で、本番の絵は作者が描く。
+[日本語](README.ja.md)
 
-## 流れ
+A command-line image pipeline for character sheets and composition references. It drives ComfyUI on a [Modal](https://modal.com) GPU and renders pose underlays with Blender on the local CPU. It is not tied to any one work: each work describes itself in an `artgen.toml`.
 
-1. **撮影指示**: Claude が場面カードを読み、一枚ごとの指示を JSON で書く（写る人物、カメラの高さと角度、寄り引き、視線、ポーズ、光源、文字が乗る余白）。
-2. **下絵**: Blender のデッサン人形にポーズを付け、深度と骨格（OpenPose）の画像を書き出す。Modal 上で画面なしで動かす。
-3. **生成**: ComfyUI に、下絵＋キャラの LoRA＋人物ごとの領域指定で描かせる。表情の差し替えや部分修正は編集モデルで直す。
-4. **選別**: Claude が縮小した画像で指示と照らして選び、ずれた所は理由付きで撮り直す。候補を三〜四枚に絞って作者が決める。
+## Install
 
-実行は Modal が主。上限に近づいたら RunPod に切り替える（同じ ComfyUI のワークフローを両方で動かす）。
+Python 3.13 is required (bpy 5.2 LTS ships for 3.13 only).
 
-## 流れの使い分け（作者 2026-11-11）
+With mise, add this to the work's `mise.toml` and run `mise install`:
 
-一枚ごとに流れを選ぶ。撮影指示の `flow` に書き、Claude が理由を一行添えて選ぶ。作者が変えてよい。
+```toml
+[tools]
+"pipx:git+ssh://git@github.com/narusenia/modal-artgen.git" = { version = "latest", uvx_args = "--python 3.13" }
+```
 
-| flow | 中身 | 向く絵 |
-| --- | --- | --- |
-| `direct` | 文章だけで生成（二段生成と手・顔の修正つき） | 一人の単純な構図、設定画、雰囲気の当たり |
-| `underlay` | Blender の下絵（深度・骨格）を ControlNet に入れて生成 | 込み入ったポーズ、強い遠近、複数人、手前に物が来る構図 |
-| `parts` | 人物・線画・エフェクト・背景を別々のレイヤーで出す素材出し。レイヤーをまとめた PSD も出す（作者は CLIP STUDIO PAINT で開く） | 作者が凝って描く口絵・挿絵だけ |
-| `edit` | 文章の指示で既存の絵を直す | 表情・衣装の差し替え、部分の直し |
+Or with uv directly:
 
-- 一枚の中で組み合わせてよい（例: `underlay` で描いて `edit` で直し、`parts` で素材に分ける）。
-- 迷ったら軽い順（`direct` → `underlay` → `parts`）に試す。
+```bash
+uv tool install --python 3.13 git+ssh://git@github.com/narusenia/modal-artgen.git
+```
 
-## プロンプトの保存
+Then, once per machine:
 
-作者が「いい」と採用した絵のプロンプトは、`packages/<作品>/art/prompts/` に保存する（git に入れる）。
+```bash
+artgen auth    # log in to Modal (interactive)
+artgen check   # rent a T4 for a few seconds to confirm access
+```
 
-- `_style.toml`: その作品の全員に共通する部品（絵柄、年齢感、ネガティブの共通分）
-- `<人物>.toml`: 人物ごとの採用プロンプト。一つの採用ごとに `[[preset]]` を一つ足す
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `artgen gen` | Generate with ComfyUI on Modal. `--preset <who>/<name>`, `--prompt`, or `--jobs <file.json>` for many jobs in one session. `--dry-run` prints the expanded jobs |
+| `artgen wait` | Block until `gen` runs started in the background finish, then print their output folders. For agents |
+| `artgen stop` | Stop every artgen app still up on the Modal account |
+| `artgen underlay <shot.json>` | Render depth and OpenPose underlays from a shot (local CPU) |
+| `artgen sheet <sheet.toml>` | Lay a title, callouts, a spec table and a palette over sheet pictures |
+| `artgen show <path>...` | Open images or folders in the system viewer |
+| `artgen auth` / `artgen check` | Modal login / GPU check |
+| `artgen skill [--install DIR]` | Print the agent skill, or write it to `DIR/artgen/SKILL.md` (e.g. `.claude/skills`) |
+
+`artgen <command> --help` lists every option.
+
+## Project config
+
+artgen looks for `artgen.toml` in the current directory and its parents. Paths are relative to that file. Every key is optional.
+
+```toml
+out = "art/out"            # generated images
+prompts = "art/prompts"    # adopted presets: _style.toml and <who>.toml
+poses = "art/poses"        # extra pose shelf, searched before the bundled one
+
+[modal]
+gpu = "T4"                 # default GPU
+gpus = ["T4", "L4"]        # GPUs allowed with --gpu or a preset's gpu
+max_apps = 1               # artgen apps allowed up at once on the Modal account
+timeout = 900              # seconds per ComfyUI container
+scaledown = 30             # seconds an idle container stays up
+
+[gen]                      # defaults for `artgen gen`; the command line wins
+workflow = "sdxl_txt2img"  # or sdxl_hires_detailer
+width = 832
+height = 1216
+n = 2
+negative = ""
+```
+
+`max_apps` counts apps started from any machine or work. When the limit is reached, `gen` and `check` refuse to start; use `artgen wait` or `artgen stop`.
+
+## Presets
+
+An adopted prompt is saved so it can be generated again. `<prompts>/_style.toml` holds what every character shares, and `<prompts>/<who>.toml` holds one `[[preset]]` per adopted picture:
 
 ```toml
 [[preset]]
-name = "stance_blazer"          # 何の絵か
-adopted = "2026-11-11"          # 採用した日
-model = "NoobAI-XL-v1.1"
-positive = "..."                # _style.toml の分は除いた人物の部分
+name = "stance"
+uses = ["uniform.female"]      # extra tables from _style.toml, joined after `style`
+positive = "1girl, standing"   # only the character's part
 negative = "..."
+seeds = [1234]
 width = 832
 height = 1216
-steps = 28
-cfg = 5.0
-sampler = "euler_ancestral"
-seeds = [1234]                  # 採用した絵のシード
-shot = "seres_stance.json"      # 下絵を使ったら撮影指示のファイル名
-note = "顔は年相応、ブレザーが出る"
+workflow = "sdxl_hires_detailer"
+ref = "art/refs/uniform.png"   # optional IP-Adapter reference
+note = "what was adopted and why"
 ```
 
-- 採用した絵そのものは `out/` に残る（git に入れない）。`<人物>.toml` には出力のフォルダ名を `note` に書いておく。
+`artgen gen --preset <who>/stance` runs one job per seed. A non-zero `--seed` replaces the seeds.
 
-## 構図の決まり（作者 2026-11-11）
+## Formats
 
-- 構図は常にダイナミックにする。強いあおり・俯瞰、カメラの傾き、広角の遠近、中心をずらした配置、手前の物を大きく入れる、などを既定で使う。
-- 例外は設定画（正面・横・後ろ、表情差分、衣装の分解図）だけ。形と色を読むための資料なので、正面の光と素直なカメラで撮る。
-- 静かな場面でも、穏やかにするのは作者が指示したときだけ。
+- Shots (underlays): [docs/shots.md](docs/shots.md)
+- Poses: [docs/poses.md](docs/poses.md)
+- Character sheets: [docs/sheets.md](docs/sheets.md)
 
-## 描き方の決まり
+## Cost
 
-- 登場人物は未成年（16歳前後）。性的に見える画角・描き方は、構図の決まりより優先して避ける。スカートの中が写る真下からのあおり、脚や胸を強調する構図、露出の多い描写は出さない。ネガティブにも入れておく。動きは斜め横からのあおり、傾き、腰上の構図で出す。
-- 塗りはラノベ塗り。平坦なアニメ塗りにしない（柔らかい陰影、グラデーション、髪と瞳のハイライト、リムライト）。塗りの密度は上げても、服の装飾は控えめのまま（`docs/visual.md`）。
+Modal bills per second. The defaults stay cheap: T4, short timeouts, idle containers stopped after 30 seconds, weights kept on the `artgen-models` volume and downloaded once. Set a monthly limit in the Modal workspace settings.
 
-## 確認の決まり
-
-- 画像（生成した絵、下絵の深度・骨格、ポーズ）を出したら、作者の画面に開いて見せ、採用・不採用と直す点を作者に確かめてから次へ進む。開くのは `mise run art:show <ファイルかフォルダ>`（macOS は `open`、Linux は `xdg-open`）。
-- エージェントが自分で見て確かめるのは、縮小した画像で行う（会話が重くなるため）。
-
-## 費用の決まり（Modal は Starter プラン）
-
-- GPU は安いものから使う。既定は T4（16GB）。足りないときだけ L4（24GB）。それより上は使う前に作者に聞く。
-- Blender の下絵（深度・OpenPose の書き出し）は CPU で回す。GPU を付けない。
-- 関数には短い timeout を付け、待機中のコンテナを残さない（使い終わったら止まる設定のまま）。
-- モデルの重みは Volume に一度だけ置き、毎回ダウンロードしない。
-- 画像は一回の呼び出しでまとめて出す（起動の回数を減らす）。
-- 量子化版（fp8・int8 など）を優先して、安い GPU に載せる。
-- 試し描きは低い解像度・少ない枚数で当たりを取り、採用の候補だけ高い解像度で出し直す。
-- 月の使用量はワークスペースの設定で上限を掛ける（作者が Modal の画面で設定する）。
-
-## 置き場所
-
-| パス | 中身 |
-| --- | --- |
-| `tools/artgen/` | パイプラインのコード（作品共通） |
-| `tools/artgen/poses/` | ポーズの棚（骨格データ。作品共通） |
-| `packages/<作品>/docs/visual.md` | その作品の絵柄・人物の外見・制服・魔術の見た目 |
-| `packages/<作品>/art/shots/` | 撮影指示の JSON |
-| `packages/<作品>/art/characters/` | キャラごとの採用した設定画と LoRA の学習メモ |
-| `packages/<作品>/art/out/` | 生成した画像（git に入れない） |
-
-## 使い方
-
-環境の作り方はリポジトリ直下の `docs/setup.md`。
+## Development
 
 ```bash
-mise run art:auth    # 初回だけ。Modal の認証（対話）
-mise run art:check   # GPU が借りられるか
+mise run setup   # uv sync
+mise run test    # unit tests
+uv run artgen …  # run from the checkout
 ```
 
-生成（Modal の T4。初回は重みを Volume `artgen-models` に落とす）:
-
-```bash
-uv run --project tools/artgen modal run tools/artgen/artgen/comfy.py --prompt "..." --negative "..." --seed 1 --n 4 [--width 832 --height 1216 --work yohakuroku]
-# → packages/<作品>/art/out/<日時>/ に PNG と workflow.json
-```
-
-下絵（Blender、手元の CPU で動く）:
-
-```bash
-uv run --project tools/artgen python tools/artgen/artgen/underlay.py packages/<作品>/art/shots/<id>.json
-# → packages/<作品>/art/out/underlay/<id>_depth.png・<id>_openpose.png
-```
-
-設定画の文字入れ（手元、GPU なし。初回は `sh tools/artgen/fonts/fetch.sh`）:
-
-```bash
-uv run --project tools/artgen python tools/artgen/artgen/sheet.py packages/<作品>/art/sheets/<名前>.toml
-# → packages/<作品>/art/out/sheets/<名前>.png
-```
-
-型紙の形は `sheets.schema.md`。フォントは Noto Sans JP / Noto Serif JP（SIL OFL 1.1、git に入れない）。
-
-撮影指示の形は `shots.schema.md`、ポーズは `poses/`。`tools/artgen` だけ Python 3.13（bpy 5.2 LTS が 3.13 用しかないため）。
-
-作業の予定は `TODO.md`。
+Plans are in [TODO.md](TODO.md). Rules for agents working on this repository are in [AGENTS.md](AGENTS.md).
