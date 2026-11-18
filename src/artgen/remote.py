@@ -43,6 +43,8 @@ comfy_image = (
         f"git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus {COMFY_DIR}/custom_nodes/ComfyUI_IPAdapter_plus"
         f" && git -C {COMFY_DIR}/custom_nodes/ComfyUI_IPAdapter_plus checkout a0f451a5113cf9becb0847b92884cb10cbdec0ef",
     )
+    # Impact-Pack logs a KeyError traceback on every fresh container when its ini is missing
+    .run_commands(f"printf '[default]\\n' > {COMFY_DIR}/custom_nodes/ComfyUI-Impact-Pack/impact-pack.ini")
     .add_local_python_source("artgen")
 )
 dl_image = modal.Image.debian_slim(python_version="3.11").uv_pip_install("huggingface-hub[hf_xet]==0.36.0").add_local_python_source("artgen")

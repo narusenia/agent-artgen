@@ -18,7 +18,7 @@ Top to bottom. Mark done items with [x] and the date.
 - [x] `inpaint`: repaint a masked area (2026-11-18, job key `mask`)
 - [x] `edit`: instruction-based edit with P-H3-Image, `artgen edit <image> "instruction"` (2026-11-18: w4a8 set, no prompt upsampler; T4 at 1 MP in 211 s)
 - [ ] `edit`: try 4 MP on T4 and L4, and the prompt upsampler (another 10–19 GB)
-- [ ] Find the `KeyError: 'default'` (configparser) printed at ComfyUI start; generation is not affected
+- [x] Find the `KeyError: 'default'` printed at ComfyUI start (2026-11-18: Impact-Pack's missing ini; an empty one is baked into the image)
 - [x] `rembg`: background removal (BiRefNet) to a transparent PNG (2026-11-18)
 - [x] `upscale`: model upscale for final candidates (2026-11-18, RealESRGAN x4plus anime 6B)
 
