@@ -12,13 +12,13 @@ With mise, add this to the work's `mise.toml` and run `mise install`:
 
 ```toml
 [tools]
-"pipx:git+ssh://git@github.com/narusenia/modal-artgen.git" = { version = "latest", uvx_args = "--python 3.13" }
+"pipx:git+ssh://git@github.com/narusenia/artgen-cli.git" = { version = "latest", uvx_args = "--python 3.13" }
 ```
 
 Or with uv directly:
 
 ```bash
-uv tool install --python 3.13 git+ssh://git@github.com/narusenia/modal-artgen.git
+uv tool install --python 3.13 git+ssh://git@github.com/narusenia/artgen-cli.git
 ```
 
 Then, once per machine:

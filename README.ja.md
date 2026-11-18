@@ -12,13 +12,13 @@ mise を使う場合は、作品の `mise.toml` に次を書いて `mise install
 
 ```toml
 [tools]
-"pipx:git+ssh://git@github.com/narusenia/modal-artgen.git" = { version = "latest", uvx_args = "--python 3.13" }
+"pipx:git+ssh://git@github.com/narusenia/artgen-cli.git" = { version = "latest", uvx_args = "--python 3.13" }
 ```
 
 uv で直接入れる場合:
 
 ```bash
-uv tool install --python 3.13 git+ssh://git@github.com/narusenia/modal-artgen.git
+uv tool install --python 3.13 git+ssh://git@github.com/narusenia/artgen-cli.git
 ```
 
 マシンごとに 1 回だけ:
