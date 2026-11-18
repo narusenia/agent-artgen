@@ -17,7 +17,8 @@ timeout = 900              # seconds per ComfyUI container
 scaledown = 30             # seconds an idle container stays up
 
 [gen]                      # defaults for `artgen gen`; the command line wins
-workflow = "sdxl_txt2img"  # sdxl_txt2img, sdxl_hires_detailer or post
+style = "anime-cel"        # <prompts>/styles/anime-cel.toml
+workflow = "sdxl_txt2img"  # sdxl_txt2img, sdxl_hires_detailer, post or ph3_edit
 width = 832
 height = 1216
 n = 2
@@ -30,6 +31,14 @@ key = "checkpoint"
 folder = "checkpoints"
 repo = "OnomaAIResearch/Illustrious-XL-v2.0"
 file = "Illustrious-XL-v2.0.safetensors"
+
+# A LoRA: use it with loras = [{ model = "mia_lora", strength = 0.8 }] in a job, preset or style.
+# [[model]]
+# key = "mia_lora"
+# folder = "loras"
+# repo = "<user>/<repo>"
+# file = "mia.safetensors"
+# trigger = "mia_girl"             # added to the prompt
 
 # A file from any https URL needs its sha256:
 # [[model]]

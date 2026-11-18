@@ -105,6 +105,8 @@ A job (from `--jobs`, a preset or the command line) takes these keys besides the
 | `control` | Underlays: `[{image, type = "depth" \| "openpose", strength, start_at, end_at}]` |
 | `upscale` | Enlarge the result by this factor with the upscaler model |
 | `rembg` | Remove the background (transparent PNG) |
+| `style` | Painting style from `<prompts>/styles/<name>.toml` (positive, negative, loras), put in front of the prompt |
+| `loras` | `[{model, strength}]`: LoRAs declared as `[[model]]` with `folder = "loras"`; their `trigger` words join the prompt |
 | `images`, `megapixels` | `ph3_edit` only: extra pictures, and the size of the edit (default 4) |
 
 The `post` workflow only loads `image` and applies `upscale` and `rembg`: `artgen gen --workflow post --image a.png --upscale 2 --rembg`.

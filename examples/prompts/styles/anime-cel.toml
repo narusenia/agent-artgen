@@ -1,0 +1,5 @@
+# A painting style, chosen with `style = "anime-cel"` in a preset or [gen], or `--style anime-cel`.
+# Its text goes in front of every job's prompt; its LoRAs are added to the job's.
+positive = "anime coloring, cel shading, clean lineart"
+negative = "3d, realistic, photo"
+# loras = [{ model = "cel_lora", strength = 0.6 }]   # a [[model]] with folder = "loras" in artgen.toml

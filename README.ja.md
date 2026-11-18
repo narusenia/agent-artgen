@@ -105,6 +105,8 @@ Modal では、実行ごとにワークフローが使うモデルだけを、`a
 | `control` | 下絵。`[{image, type = "depth" \| "openpose", strength, start_at, end_at}]` |
 | `upscale` | アップスケーラーで、この倍率に大きくする |
 | `rembg` | 背景を抜いて透過 PNG にする |
+| `style` | `<prompts>/styles/<名前>.toml`（positive、negative、loras）の画風。プロンプトの前に付く |
+| `loras` | `[{model, strength}]`。`folder = "loras"` の `[[model]]` で宣言した LoRA。`trigger` の語がプロンプトに入る |
 | `images`、`megapixels` | `ph3_edit` だけ。追加の画像と、直す大きさ（既定 4 メガピクセル） |
 
 `post` ワークフローは `image` を読んで `upscale` と `rembg` だけをかける。例: `artgen gen --workflow post --image a.png --upscale 2 --rembg`
